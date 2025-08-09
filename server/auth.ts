@@ -79,6 +79,30 @@ export class AuthService {
 
     return user || null;
   }
+
+  static async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean> {
+    const user = await this.getUserById(userId);
+    if (!user) {
+      return false;
+    }
+
+    // Verify current password
+    const isValidPassword = await this.verifyPassword(currentPassword, user.password);
+    if (!isValidPassword) {
+      return false;
+    }
+
+    // Hash new password and update
+    const hashedNewPassword = await this.hashPassword(newPassword);
+    
+    const [updatedUser] = await db
+      .update(users)
+      .set({ password: hashedNewPassword })
+      .where(eq(users.id, userId))
+      .returning();
+    
+    return !!updatedUser;
+  }
 }
 
 // Middleware to check if user is authenticated

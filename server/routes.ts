@@ -4,7 +4,7 @@ import connectPgSimple from "connect-pg-simple";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { insertFileSchema, insertFolderSchema, loginSchema, registerSchema } from "@shared/schema";
+import { insertFileSchema, insertFolderSchema, loginSchema, registerSchema, changePasswordSchema } from "@shared/schema";
 import { AuthService, requireAuth, requireAdmin, requireUser } from "./auth";
 import { pool } from "./db";
 import { z } from "zod";
@@ -103,6 +103,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/auth/me", requireAuth, (req, res) => {
     const user = req.session.user;
     res.json({ user: { id: user.id, username: user.username, role: user.role } });
+  });
+
+  app.post("/api/auth/change-password", requireAdmin, async (req, res) => {
+    try {
+      const passwordData = changePasswordSchema.parse(req.body);
+      const userId = req.session.user.id;
+      
+      const success = await AuthService.changePassword(
+        userId,
+        passwordData.currentPassword,
+        passwordData.newPassword
+      );
+      
+      if (!success) {
+        return res.status(400).json({ error: "Current password is incorrect" });
+      }
+
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Change password error:", error);
+      res.status(500).json({ error: "Failed to change password" });
+    }
   });
   
   // Serve public objects endpoint

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { FolderBrowser } from "@/components/FolderBrowser";
 import { FileContextMenu } from "@/components/FileContextMenu";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +22,7 @@ export default function Home() {
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<"list" | "folders">("list");
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user, logout } = useAuth();
@@ -276,6 +278,16 @@ export default function Home() {
                 }`}>
                   {user?.role === 'admin' ? 'Admin' : 'Guest'}
                 </span>
+                {user?.role === 'admin' && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setShowChangePasswordModal(true)}
+                  >
+                    <i className="fas fa-key mr-1"></i>
+                    Change Password
+                  </Button>
+                )}
                 <Button 
                   variant="outline" 
                   size="sm"
@@ -715,6 +727,11 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      <ChangePasswordModal
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+      />
     </div>
   );
 }

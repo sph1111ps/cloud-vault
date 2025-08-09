@@ -61,6 +61,11 @@ export const registerSchema = z.object({
   role: z.enum(["admin", "guest"]).default("guest"),
 });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters"),
+});
+
 export const insertFileSchema = createInsertSchema(files).omit({
   id: true,
   uploadedAt: true,
@@ -75,6 +80,7 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type LoginCredentials = z.infer<typeof loginSchema>;
 export type RegisterCredentials = z.infer<typeof registerSchema>;
+export type ChangePasswordData = z.infer<typeof changePasswordSchema>;
 export type InsertFile = z.infer<typeof insertFileSchema>;
 export type File = typeof files.$inferSelect;
 export type InsertFolder = z.infer<typeof insertFolderSchema>;
