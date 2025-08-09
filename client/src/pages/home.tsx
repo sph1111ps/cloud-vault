@@ -145,14 +145,23 @@ export default function Home() {
     },
   });
 
-  const handleGetUploadParameters = async () => {
+  const handleGetUploadParameters = async (file: any) => {
+    // Extract file information for security validation
+    const fileInfo = {
+      fileName: file.name,
+      fileSize: file.size,
+      contentType: file.type || "application/octet-stream"
+    };
+
     const response = await fetch("/api/files/upload-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fileInfo)
     });
     
     if (!response.ok) {
-      throw new Error("Failed to get upload URL");
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.details ? errorData.details.join(', ') : "Failed to get upload URL");
     }
     
     const { uploadURL } = await response.json();

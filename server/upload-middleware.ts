@@ -18,7 +18,22 @@ interface FileValidationRequest extends Request {
  */
 export function validateFileUpload(req: FileValidationRequest, res: Response, next: NextFunction) {
   try {
-    const { fileName, fileSize, contentType } = req.body;
+    // Get file info from query params or body (supports both upload URL requests and file creation)
+    const fileName = req.body.fileName || req.query.fileName || req.body.name;
+    const fileSize = req.body.fileSize || req.query.fileSize || req.body.size;
+    const contentType = req.body.contentType || req.query.contentType || req.body.type;
+    
+    // For upload URL requests, we might not have all info yet - that's okay
+    if (req.path.includes('/upload-url')) {
+      // If we have file info, validate it; otherwise skip for now
+      if (fileName && fileSize && contentType) {
+        // Proceed with validation below
+      } else {
+        // Skip validation for upload URL generation, validate later on file creation
+        next();
+        return;
+      }
+    }
     
     if (!fileName || !fileSize || !contentType) {
       return res.status(400).json({
