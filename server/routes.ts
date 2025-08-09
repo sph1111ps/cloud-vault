@@ -4,8 +4,20 @@ import { storage } from "./storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { insertFileSchema, insertFolderSchema } from "@shared/schema";
 import { z } from "zod";
+import { 
+  validateFileUpload, 
+  validateFolderOperation, 
+  addSecurityHeaders, 
+  validateFileAccess, 
+  logSecurityEvents 
+} from "./upload-middleware";
+import { FileSecurityValidator } from "./security";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  
+  // Apply security middleware globally
+  app.use(addSecurityHeaders);
+  app.use(logSecurityEvents);
   
   // Serve public objects endpoint
   app.get("/public-objects/:filePath(*)", async (req, res) => {
@@ -23,8 +35,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve private objects
-  app.get("/objects/:objectPath(*)", async (req, res) => {
+  // Serve private objects with security validation
+  app.get("/objects/:objectPath(*)", validateFileAccess, async (req, res) => {
     const objectStorageService = new ObjectStorageService();
     try {
       const objectFile = await objectStorageService.getObjectEntityFile(req.path);
@@ -38,8 +50,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get upload URL for file
-  app.post("/api/files/upload-url", async (req, res) => {
+  // Get upload URL for file with validation
+  app.post("/api/files/upload-url", validateFileUpload, async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
@@ -50,10 +62,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create file record after upload
+  // Create file record after upload with security validation
   app.post("/api/files", async (req, res) => {
     try {
       const fileData = insertFileSchema.parse(req.body);
+      
+      // Additional security validation for the final file record
+      if (fileData.name) {
+        const nameValidation = FileSecurityValidator.validateFilename(fileData.name);
+        if (!nameValidation.isValid) {
+          return res.status(400).json({ 
+            error: "Invalid filename", 
+            details: nameValidation.errors 
+          });
+        }
+        // Use sanitized filename
+        fileData.name = nameValidation.sanitizedFilename;
+      }
       
       const objectStorageService = new ObjectStorageService();
       const normalizedPath = objectStorageService.normalizeObjectEntityPath(fileData.objectPath);
@@ -174,7 +199,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Rename file endpoint
+  // Rename file endpoint with security validation
   app.patch("/api/files/:id/rename", async (req, res) => {
     try {
       const { id } = req.params;
@@ -184,7 +209,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Name is required" });
       }
 
-      const updatedFile = await storage.updateFile(id, { name });
+      // Validate the new filename
+      const nameValidation = FileSecurityValidator.validateFilename(name);
+      if (!nameValidation.isValid) {
+        return res.status(400).json({ 
+          error: "Invalid filename", 
+          details: nameValidation.errors 
+        });
+      }
+
+      const updatedFile = await storage.updateFile(id, { name: nameValidation.sanitizedFilename });
       if (!updatedFile) {
         return res.status(404).json({ error: "File not found" });
       }
@@ -237,9 +271,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/folders", async (req, res) => {
+  app.post("/api/folders", validateFolderOperation, async (req, res) => {
     try {
       const folderData = insertFolderSchema.parse(req.body);
+      // Use sanitized name from middleware
+      if (req.body.sanitizedName) {
+        folderData.name = req.body.sanitizedName;
+      }
       const newFolder = await storage.createFolder(folderData);
       res.status(201).json(newFolder);
     } catch (error) {
@@ -255,6 +293,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const updates = req.body;
+      
+      // Validate folder name if it's being updated
+      if (updates.name) {
+        const nameValidation = FileSecurityValidator.validateFolderName(updates.name);
+        if (!nameValidation.isValid) {
+          return res.status(400).json({ 
+            error: "Invalid folder name", 
+            details: nameValidation.errors 
+          });
+        }
+        updates.name = nameValidation.sanitizedName;
+      }
       
       const updatedFolder = await storage.updateFolder(id, updates);
       if (!updatedFolder) {
