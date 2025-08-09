@@ -54,7 +54,13 @@ const ALLOWED_MIME_TYPES = new Set([
   'text/html',
   'text/css',
   'text/javascript',
-  'application/javascript'
+  'application/javascript',
+  
+  // 3D Models
+  'application/octet-stream', // For .fbx, .obj, .dae and other 3D formats
+  'model/gltf+json',
+  'model/gltf-binary',
+  'application/x-blender'
 ]);
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -74,7 +80,10 @@ const ALLOWED_EXTENSIONS = new Set([
   '.mp4', '.mpeg', '.mov', '.avi', '.webm', '.ogv',
   
   // Code/Text
-  '.json', '.xml', '.html', '.css', '.js'
+  '.json', '.xml', '.html', '.css', '.js',
+  
+  // 3D Models
+  '.fbx', '.obj', '.dae', '.3ds', '.ply', '.stl', '.x3d', '.gltf', '.glb', '.blend'
 ]);
 
 // Dangerous file signatures (magic numbers)
@@ -94,6 +103,8 @@ const FILE_SIZE_LIMITS = {
   'video/*': 100 * 1024 * 1024, // 100MB for videos
   'audio/*': 50 * 1024 * 1024, // 50MB for audio
   'application/pdf': 20 * 1024 * 1024, // 20MB for PDFs
+  'application/octet-stream': 200 * 1024 * 1024, // 200MB for 3D models and binary files
+  'model/*': 200 * 1024 * 1024, // 200MB for 3D model files
   'default': 25 * 1024 * 1024 // 25MB default
 };
 
