@@ -103,6 +103,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk delete files
+  app.post("/api/files/bulk-delete", async (req, res) => {
+    try {
+      const { fileIds } = req.body;
+      
+      if (!Array.isArray(fileIds) || fileIds.length === 0) {
+        return res.status(400).json({ error: "fileIds must be a non-empty array" });
+      }
+
+      await storage.deleteFiles(fileIds);
+      res.json({ success: true, deletedCount: fileIds.length });
+    } catch (error) {
+      console.error("Error bulk deleting files:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Search files
   app.get("/api/files/search", async (req, res) => {
     try {

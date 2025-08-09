@@ -10,6 +10,7 @@ export interface IStorage {
   createFile(file: InsertFile): Promise<File>;
   getAllFiles(): Promise<File[]>;
   deleteFile(id: string): Promise<void>;
+  deleteFiles(ids: string[]): Promise<void>;
   searchFiles(query?: string, type?: string): Promise<File[]>;
 }
 
@@ -48,7 +49,9 @@ export class MemStorage implements IStorage {
     const file: File = { 
       ...insertFile, 
       id, 
-      uploadedAt: new Date()
+      uploadedAt: new Date(),
+      status: insertFile.status || "processing",
+      metadata: insertFile.metadata || null
     };
     this.files.set(id, file);
     return file;
@@ -62,6 +65,10 @@ export class MemStorage implements IStorage {
 
   async deleteFile(id: string): Promise<void> {
     this.files.delete(id);
+  }
+
+  async deleteFiles(ids: string[]): Promise<void> {
+    ids.forEach(id => this.files.delete(id));
   }
 
   async searchFiles(query?: string, type?: string): Promise<File[]> {

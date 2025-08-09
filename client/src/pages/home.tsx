@@ -74,6 +74,27 @@ export default function Home() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (fileIds: string[]) => {
+      return apiRequest("POST", "/api/files/bulk-delete", { fileIds });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/files"] });
+      setSelectedFiles(new Set());
+      toast({
+        title: "Files Deleted",
+        description: `${data.deletedCount} files have been deleted successfully`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Bulk Delete Failed",
+        description: "There was an error deleting the selected files",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleGetUploadParameters = async () => {
     const response = await fetch("/api/files/upload-url", {
       method: "POST",
@@ -414,15 +435,71 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {selectedFiles.size > 0 && (
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <span className="text-sm font-medium text-blue-900">
+                  {selectedFiles.size} file{selectedFiles.size > 1 ? 's' : ''} selected
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedFiles(new Set())}
+                  className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                >
+                  Clear Selection
+                </Button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // Download selected files
+                    selectedFiles.forEach(fileId => {
+                      const file = files.find(f => f.id === fileId);
+                      if (file) window.open(file.objectPath, "_blank");
+                    });
+                  }}
+                  className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                >
+                  <i className="fas fa-download mr-2"></i>
+                  Download Selected
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => bulkDeleteMutation.mutate(Array.from(selectedFiles))}
+                  disabled={bulkDeleteMutation.isPending}
+                >
+                  {bulkDeleteMutation.isPending ? (
+                    <i className="fas fa-spinner fa-spin mr-2"></i>
+                  ) : (
+                    <i className="fas fa-trash mr-2"></i>
+                  )}
+                  Delete Selected
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Quick Actions */}
         <div className="mt-8 grid md:grid-cols-2 gap-6">
           <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-6 text-white">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold mb-2">Bulk Operations</h3>
-                <p className="text-blue-100 text-sm mb-4">Manage multiple files at once</p>
-                <Button variant="secondary" size="sm">
-                  Select Files
+                <p className="text-blue-100 text-sm mb-4">Use checkboxes to select multiple files for batch operations</p>
+                <Button 
+                  variant="secondary" 
+                  size="sm"
+                  onClick={() => handleSelectAll(true)}
+                  disabled={files.length === 0}
+                >
+                  Select All Files
                 </Button>
               </div>
               <i className="fas fa-tasks text-3xl text-blue-200"></i>
