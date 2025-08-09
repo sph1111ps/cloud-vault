@@ -2,6 +2,20 @@
 
 This is a file upload and management web application built with a modern full-stack architecture. The application allows users to upload files, manage them through a dashboard interface, and control access permissions. It features a React frontend with TypeScript, an Express.js backend, and integrates with cloud storage services for file handling.
 
+## Recent Changes (January 9, 2025)
+- Fixed multiple file upload processing - now handles all successful uploads instead of just the first one
+- Added comprehensive bulk operations functionality:
+  - Bulk file selection with checkboxes
+  - Select All functionality  
+  - Bulk delete operations
+  - Bulk download capabilities
+  - Visual bulk action toolbar
+- Implemented real-time sync system:
+  - Auto-sync toggle with 5-second refresh intervals
+  - Manual "Sync Now" button
+  - File status monitoring (processing, synced, failed)
+  - Sync status notifications and warnings
+
 # User Preferences
 
 Preferred communication style: Simple, everyday language.

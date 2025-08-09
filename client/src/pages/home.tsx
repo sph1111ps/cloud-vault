@@ -14,6 +14,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [fileType, setFileType] = useState("All Files");
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -31,7 +32,8 @@ export default function Home() {
       const response = await fetch(url);
       if (!response.ok) throw new Error("Failed to fetch files");
       return response.json();
-    }
+    },
+    refetchInterval: autoSyncEnabled ? 5000 : false, // Auto-refresh every 5 seconds when enabled
   });
 
   const uploadMutation = useMutation({
@@ -91,6 +93,48 @@ export default function Home() {
       toast({
         title: "Bulk Delete Failed",
         description: "There was an error deleting the selected files",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Auto-sync effect to monitor file status changes
+  useEffect(() => {
+    if (autoSyncEnabled && files.length > 0) {
+      const processingFiles = files.filter(f => f.status === "processing");
+      const failedFiles = files.filter(f => f.status === "failed");
+      
+      if (processingFiles.length > 0) {
+        console.log(`Auto-sync: ${processingFiles.length} files are still processing`);
+      }
+      
+      if (failedFiles.length > 0) {
+        toast({
+          title: "Sync Warning",
+          description: `${failedFiles.length} files failed to sync`,
+          variant: "destructive",
+        });
+      }
+    }
+  }, [files, autoSyncEnabled, toast]);
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/files/sync", { method: "POST" });
+      if (!response.ok) throw new Error("Sync failed");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/files"] });
+      toast({
+        title: "Sync Complete",
+        description: `Synchronized ${data.syncedCount || 0} files`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Sync Failed",
+        description: "Unable to sync files with cloud storage",
         variant: "destructive",
       });
     },
@@ -512,12 +556,36 @@ export default function Home() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold mb-2">Auto Sync</h3>
-                <p className="text-green-100 text-sm mb-4">Keep your files synchronized</p>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" defaultChecked className="sr-only peer" />
-                  <div className="w-11 h-6 bg-green-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></div>
-                  <span className="ml-3 text-sm font-medium">Enabled</span>
-                </label>
+                <p className="text-green-100 text-sm mb-4">
+                  {autoSyncEnabled ? "Files sync every 5 seconds" : "Manual sync only"}
+                </p>
+                <div className="flex items-center space-x-3">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={autoSyncEnabled}
+                      onChange={(e) => setAutoSyncEnabled(e.target.checked)}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-green-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></div>
+                    <span className="ml-3 text-sm font-medium">
+                      {autoSyncEnabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </label>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => syncMutation.mutate()}
+                    disabled={syncMutation.isPending}
+                  >
+                    {syncMutation.isPending ? (
+                      <i className="fas fa-spinner fa-spin mr-2"></i>
+                    ) : (
+                      <i className="fas fa-sync mr-2"></i>
+                    )}
+                    Sync Now
+                  </Button>
+                </div>
               </div>
               <i className="fas fa-sync-alt text-3xl text-green-200"></i>
             </div>
