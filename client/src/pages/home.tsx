@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { FolderBrowser } from "@/components/FolderBrowser";
@@ -22,6 +23,7 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"list" | "folders">("list");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user, logout } = useAuth();
 
   const { data: files = [], isLoading } = useQuery<File[]>({
     queryKey: ["/api/files", searchQuery, fileType],
@@ -262,10 +264,41 @@ export default function Home() {
                   style={{ width: `${Math.min(storagePercentage, 100)}%` }}
                 ></div>
               </div>
-              <Button variant="outline" size="sm">
-                <i className="fas fa-user mr-1"></i>
-                Profile
-              </Button>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-700">
+                  <i className="fas fa-user mr-1"></i>
+                  {user?.username}
+                </span>
+                <span className={`px-2 py-1 text-xs rounded-full ${
+                  user?.role === 'admin' 
+                    ? 'bg-purple-100 text-purple-800' 
+                    : 'bg-green-100 text-green-800'
+                }`}>
+                  {user?.role === 'admin' ? 'Admin' : 'Guest'}
+                </span>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await logout();
+                      toast({
+                        title: "Logged out",
+                        description: "You have been successfully logged out.",
+                      });
+                    } catch (error) {
+                      toast({
+                        title: "Logout failed",
+                        description: "There was an error logging out.",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  <i className="fas fa-sign-out-alt mr-1"></i>
+                  Logout
+                </Button>
+              </div>
             </div>
           </div>
         </div>

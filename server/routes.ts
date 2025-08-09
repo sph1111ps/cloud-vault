@@ -1,8 +1,12 @@
 import type { Express } from "express";
+import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { insertFileSchema, insertFolderSchema } from "@shared/schema";
+import { insertFileSchema, insertFolderSchema, loginSchema, registerSchema } from "@shared/schema";
+import { AuthService, requireAuth, requireAdmin, requireUser } from "./auth";
+import { pool } from "./db";
 import { z } from "zod";
 import { 
   validateFileUpload, 
@@ -15,9 +19,91 @@ import { FileSecurityValidator } from "./security";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Session configuration
+  const PgSession = connectPgSimple(session);
+  app.use(session({
+    store: new PgSession({
+      pool: pool,
+      tableName: 'sessions',
+      createTableIfMissing: false
+    }),
+    secret: process.env.SESSION_SECRET || 'your-secret-key',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: false, // Set to true in production with HTTPS
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    }
+  }));
+  
   // Apply security middleware globally
   app.use(addSecurityHeaders);
   app.use(logSecurityEvents);
+
+  // Authentication routes
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const userData = registerSchema.parse(req.body);
+      
+      // Check if user already exists
+      const existingUser = await AuthService.getUserByUsername(userData.username);
+      if (existingUser) {
+        return res.status(400).json({ error: "Username already exists" });
+      }
+
+      const user = await AuthService.createUser(userData);
+      
+      // Login the user immediately after registration
+      req.session.userId = user.id;
+      req.session.user = user;
+      
+      res.json({ user: { id: user.id, username: user.username, role: user.role } });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Registration error:", error);
+      res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const credentials = loginSchema.parse(req.body);
+      const user = await AuthService.authenticateUser(credentials);
+      
+      if (!user) {
+        return res.status(401).json({ error: "Invalid username or password" });
+      }
+
+      req.session.userId = user.id;
+      req.session.user = user;
+      
+      res.json({ user: { id: user.id, username: user.username, role: user.role } });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Logout failed" });
+      }
+      res.clearCookie('connect.sid');
+      res.json({ message: "Logged out successfully" });
+    });
+  });
+
+  app.get("/api/auth/me", requireAuth, (req, res) => {
+    const user = req.session.user;
+    res.json({ user: { id: user.id, username: user.username, role: user.role } });
+  });
   
   // Serve public objects endpoint
   app.get("/public-objects/:filePath(*)", async (req, res) => {
@@ -50,8 +136,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get upload URL for file with validation
-  app.post("/api/files/upload-url", validateFileUpload, async (req, res) => {
+  // Get upload URL for file with validation (requires authentication)
+  app.post("/api/files/upload-url", requireUser, validateFileUpload, async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
@@ -62,8 +148,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create file record after upload with security validation
-  app.post("/api/files", async (req, res) => {
+  // Create file record after upload with security validation (requires authentication)
+  app.post("/api/files", requireUser, async (req, res) => {
     try {
       const fileData = insertFileSchema.parse(req.body);
       
@@ -99,8 +185,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all files
-  app.get("/api/files", async (req, res) => {
+  // Get all files (requires authentication)
+  app.get("/api/files", requireUser, async (req, res) => {
     try {
       const files = await storage.getAllFiles();
       res.json(files);
@@ -110,8 +196,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Delete file
-  app.delete("/api/files/:id", async (req, res) => {
+  // Delete file (requires authentication)  
+  app.delete("/api/files/:id", requireUser, async (req, res) => {
     try {
       const fileId = req.params.id;
       const file = await storage.getFile(fileId);

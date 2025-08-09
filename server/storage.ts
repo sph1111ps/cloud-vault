@@ -1,5 +1,8 @@
 import { type User, type InsertUser, type File, type InsertFile, type Folder, type InsertFolder } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { users, files, folders } from "@shared/schema";
+import { eq, like, or, and, isNull } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -176,4 +179,132 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Database storage implementation
+export class DatabaseStorage implements IStorage {
+  // User operations
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  // File operations
+  async getFile(id: string): Promise<File | undefined> {
+    const [file] = await db.select().from(files).where(eq(files.id, id));
+    return file;
+  }
+
+  async createFile(insertFile: InsertFile): Promise<File> {
+    const [file] = await db
+      .insert(files)
+      .values(insertFile)
+      .returning();
+    return file;
+  }
+
+  async getAllFiles(): Promise<File[]> {
+    return await db.select().from(files);
+  }
+
+  async updateFile(id: string, updates: Partial<File>): Promise<File | undefined> {
+    const [file] = await db
+      .update(files)
+      .set(updates)
+      .where(eq(files.id, id))
+      .returning();
+    return file;
+  }
+
+  async deleteFile(id: string): Promise<void> {
+    await db.delete(files).where(eq(files.id, id));
+  }
+
+  async deleteFiles(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      await db.delete(files).where(eq(files.id, id));
+    }
+  }
+
+  async searchFiles(query?: string, type?: string): Promise<File[]> {
+    let whereCondition;
+    
+    if (query && type && type !== "All Files") {
+      whereCondition = and(
+        like(files.originalName, `%${query}%`),
+        like(files.mimeType, type === "Images" ? "image/%" : 
+             type === "Videos" ? "video/%" : 
+             type === "Documents" ? "application/%" : "%")
+      );
+    } else if (query) {
+      whereCondition = like(files.originalName, `%${query}%`);
+    } else if (type && type !== "All Files") {
+      whereCondition = like(files.mimeType, type === "Images" ? "image/%" : 
+                           type === "Videos" ? "video/%" : 
+                           type === "Documents" ? "application/%" : "%");
+    }
+
+    if (whereCondition) {
+      return await db.select().from(files).where(whereCondition);
+    }
+    return await db.select().from(files);
+  }
+
+  // Folder operations
+  async getFolder(id: string): Promise<Folder | undefined> {
+    const [folder] = await db.select().from(folders).where(eq(folders.id, id));
+    return folder;
+  }
+
+  async createFolder(insertFolder: InsertFolder): Promise<Folder> {
+    const [folder] = await db
+      .insert(folders)
+      .values(insertFolder)
+      .returning();
+    return folder;
+  }
+
+  async getAllFolders(): Promise<Folder[]> {
+    return await db.select().from(folders);
+  }
+
+  async updateFolder(id: string, updates: Partial<Folder>): Promise<Folder | undefined> {
+    const [folder] = await db
+      .update(folders)
+      .set(updates)
+      .where(eq(folders.id, id))
+      .returning();
+    return folder;
+  }
+
+  async deleteFolder(id: string): Promise<void> {
+    await db.delete(folders).where(eq(folders.id, id));
+  }
+
+  async getFolderContents(folderId?: string): Promise<{ files: File[]; folders: Folder[] }> {
+    const folderFiles = await db
+      .select()
+      .from(files)
+      .where(folderId ? eq(files.folderId, folderId) : isNull(files.folderId));
+
+    const subFolders = await db
+      .select()
+      .from(folders)
+      .where(folderId ? eq(folders.parentId, folderId) : isNull(folders.parentId));
+
+    return { files: folderFiles, folders: subFolders };
+  }
+}
+
+export const storage = new DatabaseStorage();
