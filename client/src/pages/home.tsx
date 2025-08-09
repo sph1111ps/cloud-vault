@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ObjectUploader } from "@/components/ObjectUploader";
+import { FolderBrowser } from "@/components/FolderBrowser";
+import { FileContextMenu } from "@/components/FileContextMenu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { UploadResult } from "@uppy/core";
@@ -15,6 +18,8 @@ export default function Home() {
   const [fileType, setFileType] = useState("All Files");
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+  const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
+  const [viewMode, setViewMode] = useState<"list" | "folders">("list");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -328,8 +333,31 @@ export default function Home() {
           </div>
         </div>
 
-        {/* File Management */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200">
+        {/* View Mode Tabs */}
+        <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "list" | "folders")} className="mb-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="list" className="flex items-center space-x-2">
+              <i className="fas fa-list"></i>
+              <span>File List</span>
+            </TabsTrigger>
+            <TabsTrigger value="folders" className="flex items-center space-x-2">
+              <i className="fas fa-folder-open"></i>
+              <span>Folder View</span>
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="folders" className="mt-6">
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <FolderBrowser 
+                currentFolderId={currentFolderId}
+                onFolderChange={setCurrentFolderId}
+              />
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="list" className="mt-6">
+            {/* File Management */}
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Your Files</h3>
@@ -445,34 +473,39 @@ export default function Home() {
                             file.status === "synced" 
                               ? "fa-check" 
                               : file.status === "processing"
-                              ? "fa-clock"
+                              ? "fa-spinner fa-spin"
                               : "fa-exclamation-triangle"
                           } mr-1`}></i>
                           {file.status === "synced" ? "Synced" : file.status === "processing" ? "Processing" : "Failed"}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-blue-600 hover:text-blue-900"
-                            onClick={() => window.open(file.objectPath, "_blank")}
-                          >
-                            <i className="fas fa-download"></i>
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
-                            <i className="fas fa-share"></i>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-900"
-                            onClick={() => deleteMutation.mutate(file.id)}
-                          >
-                            <i className="fas fa-trash"></i>
-                          </Button>
-                        </div>
+                        <FileContextMenu 
+                          file={file} 
+                          onFileSelect={(fileId) => handleFileSelect(fileId, true)}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              const link = document.createElement("a");
+                              link.href = file.objectPath;
+                              link.download = file.originalName;
+                              link.target = "_blank";
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}>
+                              <i className="fas fa-download"></i>
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => deleteMutation.mutate(file.id)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              <i className="fas fa-trash"></i>
+                            </Button>
+                          </div>
+                        </FileContextMenu>
                       </td>
                     </tr>
                   ))}
@@ -480,7 +513,55 @@ export default function Home() {
               </table>
             )}
           </div>
+
+          {/* Bulk Actions */}
+          {selectedFiles.size > 0 && (
+            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  {selectedFiles.size} file{selectedFiles.size > 1 ? "s" : ""} selected
+                </div>
+                <div className="flex space-x-3">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      selectedFiles.forEach(fileId => {
+                        const file = files.find(f => f.id === fileId);
+                        if (file) {
+                          const link = document.createElement("a");
+                          link.href = file.objectPath;
+                          link.download = file.originalName;
+                          link.target = "_blank";
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }
+                      });
+                    }}
+                  >
+                    <i className="fas fa-download mr-2"></i>
+                    Download Selected
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      bulkDeleteMutation.mutate(Array.from(selectedFiles));
+                      setSelectedFiles(new Set());
+                    }}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <i className="fas fa-trash mr-2"></i>
+                    Delete Selected
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+      </TabsContent>
+    </Tabs>
 
         {/* Bulk Actions Bar */}
         {selectedFiles.size > 0 && (

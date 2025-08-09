@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { insertFileSchema } from "@shared/schema";
+import { insertFileSchema, insertFolderSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -171,6 +171,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error during sync:", error);
       res.status(500).json({ error: "Sync failed" });
+    }
+  });
+
+  // Rename file endpoint
+  app.patch("/api/files/:id/rename", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name } = req.body;
+      
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ error: "Name is required" });
+      }
+
+      const updatedFile = await storage.updateFile(id, { name });
+      if (!updatedFile) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      res.json(updatedFile);
+    } catch (error) {
+      console.error("Error renaming file:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Move file to folder endpoint
+  app.patch("/api/files/:id/move", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { folderId } = req.body;
+
+      const updatedFile = await storage.updateFile(id, { folderId });
+      if (!updatedFile) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      res.json(updatedFile);
+    } catch (error) {
+      console.error("Error moving file:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Folder management endpoints
+  app.get("/api/folders", async (req, res) => {
+    try {
+      const folders = await storage.getAllFolders();
+      res.json(folders);
+    } catch (error) {
+      console.error("Error fetching folders:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/folders/:id/contents", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const folderId = id === "root" ? undefined : id;
+      const contents = await storage.getFolderContents(folderId);
+      res.json(contents);
+    } catch (error) {
+      console.error("Error fetching folder contents:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/folders", async (req, res) => {
+    try {
+      const folderData = insertFolderSchema.parse(req.body);
+      const newFolder = await storage.createFolder(folderData);
+      res.status(201).json(newFolder);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating folder:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/folders/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const updatedFolder = await storage.updateFolder(id, updates);
+      if (!updatedFolder) {
+        return res.status(404).json({ error: "Folder not found" });
+      }
+
+      res.json(updatedFolder);
+    } catch (error) {
+      console.error("Error updating folder:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/folders/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteFolder(id);
+      res.status(200).json({ message: "Folder deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting folder:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 

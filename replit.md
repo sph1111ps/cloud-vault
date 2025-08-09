@@ -15,6 +15,13 @@ This is a file upload and management web application built with a modern full-st
   - Manual "Sync Now" button
   - File status monitoring (processing, synced, failed)
   - Sync status notifications and warnings
+- Implemented advanced file management system:
+  - **Folder Management**: Created FolderBrowser component with hierarchical folder structure
+  - **File Context Menus**: Right-click context menus with rename, move, delete, and download options
+  - **Tabbed Interface**: Toggle between File List view and Folder View
+  - **Breadcrumb Navigation**: Visual path navigation through folder hierarchy
+  - **Advanced Operations**: File renaming, folder creation with color coding, and move operations
+  - **Enhanced Database Schema**: Updated to support folder relationships and enhanced file metadata
 
 # User Preferences
 
