@@ -38,17 +38,18 @@ export default function Home() {
     mutationFn: async (fileData: any) => {
       return apiRequest("POST", "/api/files", fileData);
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/files"] });
       toast({
         title: "Upload Complete",
-        description: "File has been uploaded successfully",
+        description: `${variables.originalName} has been uploaded successfully`,
       });
     },
-    onError: () => {
+    onError: (error, variables) => {
+      console.error("Upload error:", error);
       toast({
         title: "Upload Failed",
-        description: "There was an error uploading your file",
+        description: `There was an error uploading ${variables.originalName}`,
         variant: "destructive",
       });
     },
@@ -114,16 +115,18 @@ export default function Home() {
 
   const handleUploadComplete = (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
     if (result.successful && result.successful.length > 0) {
-      const file = result.successful[0];
-      const uploadURL = file.uploadURL as string;
-      
-      uploadMutation.mutate({
-        name: file.name,
-        originalName: file.name,
-        size: file.size,
-        mimeType: file.type || "application/octet-stream",
-        objectPath: uploadURL,
-        status: "synced",
+      // Process all successful uploads
+      result.successful.forEach(file => {
+        const uploadURL = file.uploadURL as string;
+        
+        uploadMutation.mutate({
+          name: file.name,
+          originalName: file.name,
+          size: file.size,
+          mimeType: file.type || "application/octet-stream",
+          objectPath: uploadURL,
+          status: "synced",
+        });
       });
     }
   };
