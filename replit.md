@@ -27,6 +27,13 @@ This is a file upload and management web application built with a modern full-st
 
 Preferred communication style: Simple, everyday language.
 
+## AWS Deployment Configuration (January 9, 2025)
+- User requested AWS EC2 + S3 deployment guidance
+- Created comprehensive AWS deployment guide with step-by-step instructions
+- Implemented AWS S3 storage service to replace Google Cloud Storage
+- Added deployment scripts and configuration files for AWS infrastructure
+- Provided both quick-start and detailed manual deployment options
+
 # System Architecture
 
 ## Frontend Architecture
