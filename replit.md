@@ -33,6 +33,8 @@ Preferred communication style: Simple, everyday language.
 - Implemented AWS S3 storage service to replace Google Cloud Storage
 - Added deployment scripts and configuration files for AWS infrastructure
 - Provided both quick-start and detailed manual deployment options
+- Created visual AWS Console deployment guide with step-by-step screenshots guidance
+- Added deployment checklist for easy tracking and verification
 
 # System Architecture
 
