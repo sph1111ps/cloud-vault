@@ -22,6 +22,11 @@ This is a file upload and management web application built with a modern full-st
   - **Breadcrumb Navigation**: Visual path navigation through folder hierarchy
   - **Advanced Operations**: File renaming, folder creation with color coding, and move operations
   - **Enhanced Database Schema**: Updated to support folder relationships and enhanced file metadata
+- **Fixed Upload Security Integration**: Resolved file upload issues by properly integrating security validation with upload flow
+  - Modified ObjectUploader component to pass file information for validation
+  - Updated security middleware to handle upload URL requests properly
+  - Added support for 3D model files (.fbx, .obj, .blend, etc.) with 200MB size limit
+  - Confirmed successful upload of PNG, JPG, SVG, PDF, and FBX files
 
 # User Preferences
 
