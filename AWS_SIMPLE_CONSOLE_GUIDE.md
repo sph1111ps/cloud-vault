@@ -79,36 +79,78 @@ Quick deployment of your file management application using just EC2 and S3.
    - **User data**:
 ```bash
 #!/bin/bash
+exec > >(tee /var/log/user-data.log) 2>&1
+echo "Starting user data script at $(date)"
+
+# Update system
 yum update -y
-yum install -y git postgresql15 postgresql15-server
+
+# Install basic packages
+yum install -y git wget curl
+
+# Install PostgreSQL 15
+yum install -y postgresql15 postgresql15-server
+
+# Install Node.js 18
 curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
 yum install -y nodejs
+
+# Install PM2 globally
 npm install -g pm2
 
-# Initialize PostgreSQL
-postgresql-setup --initdb
+echo "Packages installed, initializing PostgreSQL..."
+
+# Initialize PostgreSQL with error checking
+if postgresql-setup --initdb; then
+    echo "PostgreSQL initialized successfully"
+else
+    echo "PostgreSQL initialization failed, trying alternative method"
+    sudo -u postgres /usr/pgsql-15/bin/initdb -D /var/lib/pgsql/15/data
+fi
+
+# Enable and start PostgreSQL
 systemctl enable postgresql
 systemctl start postgresql
 
-# Create database and user
-sudo -u postgres psql << 'EOF'
+# Wait for PostgreSQL to start
+sleep 10
+
+# Create database and user with error checking
+sudo -u postgres psql << 'PSQL'
 CREATE DATABASE filemanager;
 CREATE USER filemanager WITH PASSWORD 'filemanager123';
 GRANT ALL PRIVILEGES ON DATABASE filemanager TO filemanager;
 ALTER USER filemanager CREATEDB;
 \q
-EOF
+PSQL
+
+if [ $? -eq 0 ]; then
+    echo "Database and user created successfully"
+else
+    echo "Database creation failed"
+fi
 
 # Configure PostgreSQL for local connections
-sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /var/lib/pgsql/data/postgresql.conf
-echo "host all filemanager 127.0.0.1/32 md5" >> /var/lib/pgsql/data/pg_hba.conf
-systemctl restart postgresql
+PG_CONF="/var/lib/pgsql/data/postgresql.conf"
+PG_HBA="/var/lib/pgsql/data/pg_hba.conf"
+
+# Check if files exist and configure
+if [ -f "$PG_CONF" ]; then
+    sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" $PG_CONF
+    echo "host all filemanager 127.0.0.1/32 md5" >> $PG_HBA
+    systemctl restart postgresql
+    echo "PostgreSQL configured for local connections"
+else
+    echo "PostgreSQL config files not found at expected location"
+fi
 
 # Create app directory
 mkdir -p /home/ec2-user/app
 chown ec2-user:ec2-user /home/ec2-user/app
 
-echo "Setup complete" > /home/ec2-user/setup-complete.log
+# Create status file
+echo "User data script completed successfully at $(date)" > /home/ec2-user/setup-complete.log
+echo "Script completed"
 ```
 10. **Launch instance**
 
