@@ -39,25 +39,28 @@ aws ec2 authorize-security-group-ingress --group-name FileManagerEC2 --protocol 
 
 ### 1.2 Create RDS PostgreSQL Database
 
-1. Go to AWS RDS Console
-2. Click "Create database"
-3. Choose "Standard create"
-4. Select "PostgreSQL"
-5. Choose template: "Free tier" or "Production" based on needs
-6. Settings:
-   - DB instance identifier: `filemanager-db`
-   - Master username: `filemanager`
-   - Auto generate password: Yes (save the password)
-7. Instance configuration:
-   - DB instance class: `db.t3.micro` (free tier) or larger
-8. Storage: 20 GiB minimum
-9. Connectivity:
-   - VPC: Select your VPC
-   - Public access: Yes (for initial setup)
-   - VPC security group: Create new
-10. Additional configuration:
-    - Initial database name: `filemanager`
-11. Click "Create database"
+**Configure Database:**
+- Go to AWS RDS Console
+- Click "Create database" 
+- Choose "Standard create"
+- Select "PostgreSQL"
+- Choose template: "Free tier" or "Production" based on needs
+
+**Database Settings:**
+- DB instance identifier: `filemanager-db`
+- Master username: `filemanager`
+- Auto generate password: Yes (save the password)
+- DB instance class: `db.t3.micro` (free tier) or larger
+- Storage: 20 GiB minimum
+
+**Connectivity:**
+- VPC: Select your VPC
+- Public access: Yes (for initial setup)
+- VPC security group: Create new
+
+**Additional Configuration:**
+- Initial database name: `filemanager`
+- Click "Create database"
 
 ### 1.3 Create S3 Bucket for File Storage
 
@@ -88,12 +91,13 @@ Create `s3-cors.json`:
 
 ### 1.4 Create IAM Role for EC2
 
-1. Go to IAM Console
-2. Create role for EC2 service
-3. Attach policies:
-   - `AmazonS3FullAccess` (or custom policy for your bucket)
-   - `AmazonRDSDataFullAccess`
-4. Name: `FileManagerEC2Role`
+**Create IAM Role:**
+- Go to IAM Console
+- Create role for EC2 service
+- Attach policies:
+  - `AmazonS3FullAccess` (or custom policy for your bucket)
+  - `AmazonRDSDataFullAccess`
+- Name: `FileManagerEC2Role`
 
 ## Step 2: Launch and Configure EC2 Instance
 
