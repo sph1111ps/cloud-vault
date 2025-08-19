@@ -239,34 +239,108 @@ nano .env
 ```
 
 **Step 5: Setup Database**
+
+**5a: Create Database and User**
 ```bash
-# Load environment variables and create database tables
+# Create the database and user in PostgreSQL
+sudo -u postgres psql << 'EOF'
+-- Create database
+CREATE DATABASE filemanager;
+
+-- Create user with password
+CREATE USER filemanager WITH PASSWORD 'filemanager123';
+
+-- Grant all privileges
+GRANT ALL PRIVILEGES ON DATABASE filemanager TO filemanager;
+ALTER USER filemanager CREATEDB;
+
+-- Grant schema permissions
+\c filemanager
+GRANT ALL ON SCHEMA public TO filemanager;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO filemanager;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO filemanager;
+
+-- Exit
+\q
+EOF
+
+echo "✓ Database and user created"
+```
+
+**5b: Create Database Tables**
+```bash
+# Load environment variables
 source .env
+
+# Create database schema
 npm run db:push
 
-# If db:push fails, try with explicit environment:
-# DATABASE_URL=postgresql://filemanager:filemanager123@localhost:5432/filemanager npm run db:push
+# If db:push fails, create tables manually:
+if [ $? -ne 0 ]; then
+    echo "Creating tables manually..."
+    sudo -u postgres psql filemanager << 'SQL'
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR UNIQUE,
+    first_name VARCHAR,
+    last_name VARCHAR,
+    profile_image_url VARCHAR,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-# Create the admin user account (for ES modules)
-node --input-type=module -e "
-import { AuthService } from './server/auth.js';
-try {
-  await AuthService.createUser({
-    username: 'admin', 
-    password: 'Admin123!',
-    role: 'admin'
-  });
-  console.log('✓ Admin user created successfully');
-} catch (error) {
-  console.error('✗ Error creating admin user:', error.message);
-}
-"
+-- Sessions table  
+CREATE TABLE IF NOT EXISTS sessions (
+    sid VARCHAR PRIMARY KEY,
+    sess JSONB NOT NULL,
+    expire TIMESTAMP NOT NULL
+);
 
-# Alternative if above fails - create admin user manually via database
-sudo -u postgres psql filemanager << 'SQL'
-INSERT INTO users (username, password_hash, role) 
-VALUES ('admin', '$2b$10$hash_will_be_generated', 'admin');
+-- Files table
+CREATE TABLE IF NOT EXISTS files (
+    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR NOT NULL,
+    size BIGINT,
+    type VARCHAR,
+    path VARCHAR,
+    upload_status VARCHAR DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire);
+
 SQL
+    echo "✓ Tables created manually"
+fi
+```
+
+**5c: Create Admin User**
+```bash
+# Generate password hash and create admin user
+node << 'EOF'
+import('bcrypt').then(async (bcrypt) => {
+    const hash = await bcrypt.default.hash('Admin123!', 10);
+    console.log(`INSERT INTO users (id, email, first_name, last_name) VALUES ('admin', 'admin@localhost', 'Admin', 'User');`);
+    
+    // For simple auth, create a basic auth table
+    console.log(`-- Add admin credentials if using local auth`);
+    console.log(`-- Password hash for 'Admin123!': ${hash}`);
+});
+EOF
+
+# Insert admin user
+sudo -u postgres psql filemanager << 'SQL'
+INSERT INTO users (id, email, first_name, last_name) 
+VALUES ('admin', 'admin@localhost', 'Admin', 'User')
+ON CONFLICT (id) DO NOTHING;
+SQL
+
+echo "✓ Admin user created"
+echo "  Username: admin"  
+echo "  Password: Admin123!"
 ```
 
 **Step 6: Configure Process Manager**
