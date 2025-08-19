@@ -1,228 +1,339 @@
-# AWS Console Deployment Checklist
+# AWS Deployment Checklist
 
-## Pre-Deployment Preparation
-- [ ] AWS account with billing set up
-- [ ] Project code ready in GitHub/Git repository
-- [ ] Database URL ready (Neon or RDS)
-- [ ] Domain name (optional)
+Use this checklist to ensure you complete all steps for deploying your file management application to AWS.
+
+## 📋 Pre-Deployment Checklist
+
+### Prerequisites
+- [ ] AWS Account with administrative access
+- [ ] AWS CLI installed (optional, for advanced users)
+- [ ] Domain name registered (optional, for custom domain)
+- [ ] SSL certificate ready (optional, for HTTPS)
 
 ---
 
-## ✅ S3 Bucket Setup
+## 🗃️ Phase 1: Database Setup (RDS PostgreSQL)
+
+### Create RDS Database
+- [ ] Navigate to RDS Console
+- [ ] Click "Create database"
+- [ ] Select "PostgreSQL" engine
+- [ ] Choose appropriate template (Free tier/Production)
+- [ ] Configure database settings:
+  - [ ] DB identifier: `filemanager-db`
+  - [ ] Master username: `filemanager`
+  - [ ] Auto-generate password ✅
+  - [ ] **SAVE THE GENERATED PASSWORD** 🔑
+- [ ] Configure instance class and storage
+- [ ] Set public access to "Yes" (temporary)
+- [ ] Create new VPC security group
+- [ ] Set initial database name: `filemanager`
+- [ ] Enable encryption
+- [ ] Click "Create database"
+- [ ] Wait for status: "Available" ⏳ (10-15 minutes)
+
+### Database Configuration
+- [ ] Note RDS endpoint URL
+- [ ] Test connectivity (optional)
+
+---
+
+## 🪣 Phase 2: File Storage Setup (S3)
 
 ### Create S3 Bucket
-- [ ] Navigate to S3 service
+- [ ] Navigate to S3 Console
 - [ ] Click "Create bucket"
-- [ ] Enter unique bucket name: `____________________`
-- [ ] Select region: `____________________`
-- [ ] Enable ACLs
-- [ ] Uncheck "Block all public access" (with acknowledgment)
-- [ ] Enable bucket versioning
+- [ ] Choose unique bucket name: `filemanager-files-[random]`
+- [ ] Select AWS region
+- [ ] Configure ownership (ACLs disabled)
+- [ ] Block public access initially
+- [ ] Enable versioning
 - [ ] Enable default encryption (SSE-S3)
-- [ ] Create bucket
+- [ ] Click "Create bucket"
 
-### Configure Bucket
-- [ ] Set up CORS policy
-- [ ] Configure bucket policy (after creating IAM role)
-- [ ] Note bucket name: `____________________`
+### Configure S3 Bucket
+- [ ] Go to bucket → Permissions → CORS
+- [ ] Add CORS configuration (see guide)
+- [ ] Save CORS settings
 
 ---
 
-## ✅ IAM Role Setup
+## 🔑 Phase 3: IAM Role Setup
 
-### Create EC2 Role
-- [ ] Navigate to IAM service
+### Create EC2 IAM Role
+- [ ] Navigate to IAM Console
 - [ ] Click "Roles" → "Create role"
-- [ ] Select AWS service → EC2
-- [ ] Add permissions: AmazonS3FullAccess
-- [ ] Add permissions: CloudWatchAgentServerPolicy
-- [ ] Name role: `FileManager-EC2-Role`
-- [ ] Create role
-
-### Get Account Information
-- [ ] Note AWS Account ID: `____________________`
-- [ ] Update S3 bucket policy with Account ID and bucket name
-- [ ] Save bucket policy
+- [ ] Select "AWS service" → "EC2"
+- [ ] Attach policies:
+  - [ ] `AmazonS3FullAccess` (or custom policy)
+  - [ ] `AmazonRDSDataFullAccess`
+  - [ ] `CloudWatchAgentServerPolicy`
+- [ ] Name role: `FileManagerEC2Role`
+- [ ] Click "Create role"
 
 ---
 
-## ✅ Security Group Setup
+## 💻 Phase 4: EC2 Instance Setup
 
-### Create Security Group
-- [ ] Navigate to EC2 → Security Groups
-- [ ] Click "Create security group"
-- [ ] Name: `filemanager-security-group`
+### Launch EC2 Instance
+- [ ] Navigate to EC2 Console
+- [ ] Click "Launch instance"
+- [ ] Name: `FileManager-App`
+- [ ] Choose Amazon Linux 2023 AMI
+- [ ] Select instance type:
+  - [ ] `t3.micro` (free tier)
+  - [ ] `t3.small` or larger (production)
+
+### Configure Key Pair
+- [ ] Create new key pair OR select existing
+- [ ] If new: Name `filemanager-key`
+- [ ] **DOWNLOAD and SAVE the .pem file** 🔑
+
+### Configure Security Group
+- [ ] Create new security group: `filemanager-ec2-sg`
 - [ ] Add inbound rules:
   - [ ] SSH (22) from My IP
   - [ ] HTTP (80) from Anywhere
-  - [ ] HTTPS (443) from Anywhere
+  - [ ] HTTPS (443) from Anywhere  
   - [ ] Custom TCP (5000) from Anywhere
-- [ ] Create security group
 
----
-
-## ✅ EC2 Instance Setup
-
-### Launch Instance
-- [ ] Navigate to EC2 → Launch instance
-- [ ] Name: `FileManager-App-Server`
-- [ ] Select Amazon Linux 2023 AMI
-- [ ] Choose instance type: `t3.micro` (free tier) or `t3.small`
-- [ ] Create or select key pair: `____________________`
-- [ ] Network settings:
-  - [ ] Enable auto-assign public IP
-  - [ ] Select security group: `filemanager-security-group`
-- [ ] Storage: 20 GB gp3
-- [ ] Advanced details:
-  - [ ] IAM instance profile: `FileManager-EC2-Role`
-  - [ ] Add user data script (from guide)
+### Configure Advanced Settings
+- [ ] Storage: 20 GiB minimum
+- [ ] IAM role: `FileManagerEC2Role`
+- [ ] Add User Data script (see guide)
 - [ ] Launch instance
-
-### Instance Information
-- [ ] Instance ID: `____________________`
-- [ ] Public IP: `____________________`
-- [ ] Key pair file location: `____________________`
+- [ ] Wait for status: "Running" ⏳ (2-5 minutes)
+- [ ] **Note the Public IPv4 address** 📍
 
 ---
 
-## ✅ Application Deployment
+## 🚀 Phase 5: Application Deployment
 
-### Connect to Instance
-- [ ] Use EC2 Instance Connect (browser) OR
-- [ ] SSH with key pair: `ssh -i keypair.pem ec2-user@IP`
+### Connect to EC2 Instance
+- [ ] Use EC2 Instance Connect OR
+- [ ] SSH: `ssh -i filemanager-key.pem ec2-user@PUBLIC-IP`
 
-### Deploy Code
-- [ ] Navigate to `/opt/file-manager`
-- [ ] Clone repository: `git clone YOUR_REPO_URL .`
+### Deploy Application Code
+- [ ] Clone repository: `git clone [YOUR-REPO-URL] app`
+- [ ] Navigate to app: `cd app`
 - [ ] Install dependencies: `npm install`
-- [ ] Install AWS SDK: `npm install aws-sdk`
-- [ ] Copy environment file: `cp .env.example .env`
-- [ ] Configure environment variables:
-  - [ ] `S3_BUCKET_NAME=____________________`
-  - [ ] `AWS_REGION=____________________`
-  - [ ] `DATABASE_URL=____________________`
 - [ ] Build application: `npm run build`
-- [ ] Start service: `sudo systemctl start file-manager`
 
-### Verify Deployment
-- [ ] Check service status: `sudo systemctl status file-manager`
-- [ ] Check logs: `sudo journalctl -u file-manager -f`
-- [ ] Test health endpoint: `curl http://localhost:5000/health`
-- [ ] Access application: `http://PUBLIC_IP`
+### Configure Environment Variables
+- [ ] Create `.env` file: `nano .env`
+- [ ] Add all required environment variables:
+  - [ ] DATABASE_URL (with RDS endpoint)
+  - [ ] All PGXXX variables
+  - [ ] SESSION_SECRET (generate strong secret)
+  - [ ] AWS_S3_BUCKET (your bucket name)
+  - [ ] AWS_REGION
+  - [ ] NODE_ENV=production
+  - [ ] PORT=5000
+- [ ] Save environment file ✅
+
+### Initialize Database
+- [ ] Run: `npm run db:push`
+- [ ] Create admin user (see guide)
+- [ ] Verify admin user creation ✅
+
+### Start Application
+- [ ] Create PM2 config file
+- [ ] Start with PM2: `pm2 start ecosystem.config.js`
+- [ ] Save PM2 config: `pm2 save`
+- [ ] Enable startup: `pm2 startup`
+
+### Test Application
+- [ ] Open browser: `http://PUBLIC-IP:5000`
+- [ ] Login with admin credentials
+- [ ] Upload a test file
+- [ ] Verify file storage in S3
+- [ ] Test file download
+- [ ] **Application working** ✅
 
 ---
 
-## ✅ Domain Setup (Optional)
+## ⚖️ Phase 6: Load Balancer Setup (Production Only)
 
-### Route 53 Configuration
-- [ ] Register domain or transfer existing domain
-- [ ] Create hosted zone
-- [ ] Create A record pointing to EC2 IP
-- [ ] Update nameservers if necessary
+### Create Target Group
+- [ ] Navigate to EC2 → Target Groups
+- [ ] Create target group: `filemanager-tg`
+- [ ] Protocol: HTTP, Port: 5000
+- [ ] Health check path: `/api/auth/me`
+- [ ] Register EC2 instance
+
+### Create Application Load Balancer
+- [ ] Navigate to EC2 → Load Balancers
+- [ ] Create Application Load Balancer
+- [ ] Name: `filemanager-alb`
+- [ ] Internet-facing, IPv4
+- [ ] Select multiple AZs
+- [ ] Create/assign security groups
+- [ ] Add HTTP listener → Forward to target group
+- [ ] Create load balancer
+- [ ] Wait for status: "Active" ⏳
+
+### Test Load Balancer
+- [ ] Access via ALB DNS name
+- [ ] Verify application works through load balancer
+
+---
+
+## 🔒 Phase 7: Security Hardening
+
+### Update S3 Bucket Policy
+- [ ] Go to S3 bucket → Permissions → Bucket policy
+- [ ] Add public read policy for public folder only
+- [ ] Save bucket policy
+
+### Secure EC2 Access
+- [ ] Remove direct port 5000 access from EC2 security group
+- [ ] Force traffic through load balancer only
+
+### SSL Certificate (Production)
+- [ ] Request certificate in AWS Certificate Manager
+- [ ] Add HTTPS listener to load balancer
+- [ ] Update DNS records if using custom domain
+
+---
+
+## 🌐 Phase 8: Domain Configuration (Optional)
+
+### Route 53 Setup
+- [ ] Create hosted zone for domain
+- [ ] Create A record pointing to load balancer
+- [ ] Update nameservers at domain registrar
 - [ ] Test domain resolution
 
-### SSL Certificate (Optional)
-- [ ] Request certificate in AWS Certificate Manager
-- [ ] Validate domain ownership
-- [ ] Configure certificate with load balancer or CloudFront
+---
+
+## 📊 Phase 9: Monitoring Setup
+
+### CloudWatch Alarms
+- [ ] Create CPU utilization alarm (>80%)
+- [ ] Create memory usage alarm
+- [ ] Set up SNS notifications
+- [ ] Test alarm triggers
+
+### RDS Monitoring
+- [ ] Enable Performance Insights
+- [ ] Set up database alarms
+- [ ] Configure backup retention
+
+### Application Logs
+- [ ] Configure log rotation
+- [ ] Set up log aggregation
+- [ ] Test log accessibility
 
 ---
 
-## ✅ Monitoring & Security
+## 🧪 Phase 10: Final Testing
 
-### CloudWatch Setup
-- [ ] Set up basic monitoring
-- [ ] Create custom dashboard
-- [ ] Set up log groups for application logs
-- [ ] Configure billing alerts
-
-### Security Hardening
-- [ ] Review security group rules
-- [ ] Set up AWS CloudTrail
-- [ ] Configure backup strategy
-- [ ] Test access controls
-
----
-
-## ✅ Testing Checklist
-
-### Basic Functionality
-- [ ] Application loads in browser
-- [ ] File upload works
+### Functionality Tests
+- [ ] User registration works
+- [ ] User login works
+- [ ] Admin login works
+- [ ] File upload works (all file types)
 - [ ] File download works
-- [ ] Folder creation works
-- [ ] File management operations work
+- [ ] File deletion works
+- [ ] Bulk operations work
+- [ ] Folder management works
+- [ ] Change password works (admin)
 
-### S3 Integration
-- [ ] Files are stored in S3 bucket
-- [ ] EC2 can read/write to S3
-- [ ] File URLs are accessible
-- [ ] File deletion removes from S3
+### Performance Tests
+- [ ] Multiple concurrent uploads
+- [ ] Large file uploads (test size limits)
+- [ ] Multiple user sessions
 
-### Performance
-- [ ] Page load times acceptable
-- [ ] File upload speed reasonable
-- [ ] No memory leaks observed
-- [ ] Error handling works properly
+### Security Tests
+- [ ] SQL injection attempts fail
+- [ ] XSS attempts fail
+- [ ] Unauthorized access blocked
+- [ ] File access permissions correct
 
----
-
-## 📝 Post-Deployment Notes
-
-### Important Information to Save
-- **S3 Bucket Name:** `____________________`
-- **EC2 Instance ID:** `____________________`
-- **Public IP Address:** `____________________`
-- **Domain Name:** `____________________` (if applicable)
-- **Database URL:** `____________________`
-- **Key Pair Name:** `____________________`
-
-### Regular Maintenance Tasks
-- [ ] Weekly: Check application logs
-- [ ] Weekly: Monitor AWS costs
-- [ ] Monthly: Update system packages
-- [ ] Monthly: Review security settings
-- [ ] Quarterly: Update application dependencies
-
-### Emergency Contacts & Resources
-- **AWS Support:** [AWS Support Center](https://console.aws.amazon.com/support/)
-- **Documentation:** Check AWS_CONSOLE_GUIDE.md for detailed instructions
-- **Troubleshooting:** Refer to troubleshooting section in guide
+### Disaster Recovery Test
+- [ ] Database backup/restore
+- [ ] Application recovery after crash
+- [ ] S3 data integrity
 
 ---
 
-## 🚨 Troubleshooting Quick Reference
+## 📝 Post-Deployment Tasks
 
-### Common Issues
-- **502 Bad Gateway:** Check if application is running on port 5000
-- **S3 Access Denied:** Verify IAM role permissions and bucket policy
-- **Application won't start:** Check environment variables and logs
-- **Can't connect to database:** Verify DATABASE_URL and network connectivity
+### Documentation
+- [ ] Document all passwords/secrets securely
+- [ ] Create runbook for common tasks
+- [ ] Document backup/restore procedures
+- [ ] Create user guide
 
-### Key Commands
+### Maintenance Schedule
+- [ ] Weekly OS updates: `sudo yum update -y`
+- [ ] Monthly dependency updates: `npm audit fix`
+- [ ] Quarterly security review
+- [ ] Regular backup testing
+
+### Cost Optimization
+- [ ] Review instance sizing after 1 week
+- [ ] Set up billing alerts
+- [ ] Consider Reserved Instances for production
+- [ ] Review S3 storage classes
+
+---
+
+## 🎉 Deployment Complete!
+
+### Final Checklist
+- [ ] Application accessible via domain/IP ✅
+- [ ] All features working correctly ✅
+- [ ] Security measures in place ✅
+- [ ] Monitoring configured ✅
+- [ ] Backup strategy implemented ✅
+- [ ] Documentation complete ✅
+
+### Success Criteria
+- [ ] Users can register and login
+- [ ] Files upload and download correctly
+- [ ] Admin features work
+- [ ] Application is secure
+- [ ] Performance is acceptable
+- [ ] Monitoring is active
+
+**🎊 Congratulations! Your file management application is now live on AWS!**
+
+### Next Steps
+- [ ] Monitor application performance
+- [ ] Gather user feedback
+- [ ] Plan feature enhancements
+- [ ] Schedule regular maintenance
+
+---
+
+## 🚨 Emergency Contacts & Resources
+
+### AWS Support Resources
+- AWS Support Center: https://console.aws.amazon.com/support/
+- AWS Documentation: https://docs.aws.amazon.com/
+- AWS Status Page: https://status.aws.amazon.com/
+
+### Important Commands for Troubleshooting
 ```bash
 # Check application status
-sudo systemctl status file-manager
+pm2 status
 
-# View application logs
-sudo journalctl -u file-manager -f
+# View application logs  
+pm2 logs filemanager
 
 # Restart application
-sudo systemctl restart file-manager
-
-# Test S3 access
-aws s3 ls s3://your-bucket-name
+pm2 restart filemanager
 
 # Check system resources
 htop
-df -h
-free -m
+
+# Test database connection
+psql -h RDS-ENDPOINT -U filemanager -d filemanager
 ```
 
----
-
-**Deployment Date:** `____________________`
-**Deployed By:** `____________________`
-**Version:** `____________________`
-
-✅ **Deployment Complete** - Your file management application is now running on AWS!
+### Emergency Rollback Plan
+1. Stop current application: `pm2 stop filemanager`
+2. Checkout previous version: `git checkout [previous-commit]`
+3. Restart application: `pm2 start filemanager`
+4. Verify functionality

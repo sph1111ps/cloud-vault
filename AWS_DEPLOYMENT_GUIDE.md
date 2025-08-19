@@ -1,429 +1,336 @@
-# AWS EC2 + S3 Deployment Guide
+# AWS Deployment Guide
 
-This guide will help you deploy your file management application to AWS EC2 with S3 storage integration.
+This guide walks you through deploying your file management application to AWS using EC2 for hosting and S3 for file storage.
+
+## Architecture Overview
+
+- **EC2 Instance**: Hosts your Node.js application
+- **RDS PostgreSQL**: Managed database for user data and file metadata
+- **S3 Bucket**: Stores uploaded files with proper security
+- **Application Load Balancer**: SSL termination and traffic distribution
+- **Route 53**: DNS management (optional)
 
 ## Prerequisites
 
-- AWS account with appropriate permissions
-- AWS CLI installed locally
-- Domain name (optional, for custom domain)
+1. AWS Account with administrative access
+2. AWS CLI installed and configured
+3. Domain name (optional, for custom domain)
 
-## Step 1: Set up AWS S3 Bucket
+## Step 1: Set Up AWS Infrastructure
 
-### Create S3 Bucket
+### 1.1 Create VPC and Security Groups
+
 ```bash
-# Replace 'your-app-bucket' with your desired bucket name
-aws s3 mb s3://your-app-bucket --region us-east-1
+# Create VPC
+aws ec2 create-vpc --cidr-block 10.0.0.0/16 --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=FileManagerVPC}]'
+
+# Create Internet Gateway
+aws ec2 create-internet-gateway --tag-specifications 'ResourceType=internet-gateway,Tags=[{Key=Name,Value=FileManagerIGW}]'
+
+# Create Security Group for EC2
+aws ec2 create-security-group --group-name FileManagerEC2 --description "Security group for File Manager EC2"
+
+# Add rules to security group
+aws ec2 authorize-security-group-ingress --group-name FileManagerEC2 --protocol tcp --port 22 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-name FileManagerEC2 --protocol tcp --port 80 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-name FileManagerEC2 --protocol tcp --port 443 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-name FileManagerEC2 --protocol tcp --port 5000 --cidr 0.0.0.0/0
 ```
 
-### Configure S3 Bucket Policy
-Create a bucket policy to allow your EC2 instance to access the bucket:
+### 1.2 Create RDS PostgreSQL Database
 
+1. Go to AWS RDS Console
+2. Click "Create database"
+3. Choose "Standard create"
+4. Select "PostgreSQL"
+5. Choose template: "Free tier" or "Production" based on needs
+6. Settings:
+   - DB instance identifier: `filemanager-db`
+   - Master username: `filemanager`
+   - Auto generate password: Yes (save the password)
+7. Instance configuration:
+   - DB instance class: `db.t3.micro` (free tier) or larger
+8. Storage: 20 GiB minimum
+9. Connectivity:
+   - VPC: Select your VPC
+   - Public access: Yes (for initial setup)
+   - VPC security group: Create new
+10. Additional configuration:
+    - Initial database name: `filemanager`
+11. Click "Create database"
+
+### 1.3 Create S3 Bucket for File Storage
+
+```bash
+# Create S3 bucket (replace YOUR-BUCKET-NAME with unique name)
+aws s3 mb s3://your-filemanager-bucket-unique-name
+
+# Enable versioning
+aws s3api put-bucket-versioning --bucket your-filemanager-bucket-unique-name --versioning-configuration Status=Enabled
+
+# Set up CORS for web uploads
+aws s3api put-bucket-cors --bucket your-filemanager-bucket-unique-name --cors-configuration file://s3-cors.json
+```
+
+Create `s3-cors.json`:
 ```json
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "AllowEC2Access",
-            "Effect": "Allow",
-            "Principal": {
-                "AWS": "arn:aws:iam::YOUR-ACCOUNT-ID:role/EC2-S3-Role"
-            },
-            "Action": [
-                "s3:GetObject",
-                "s3:PutObject",
-                "s3:DeleteObject",
-                "s3:ListBucket"
-            ],
-            "Resource": [
-                "arn:aws:s3:::your-app-bucket/*",
-                "arn:aws:s3:::your-app-bucket"
-            ]
-        }
-    ]
+  "CORSRules": [
+    {
+      "AllowedHeaders": ["*"],
+      "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
+      "AllowedOrigins": ["*"],
+      "ExposeHeaders": ["ETag"]
+    }
+  ]
 }
 ```
 
-### Enable CORS for S3 Bucket
-```json
-{
-    "CORSRules": [
-        {
-            "AllowedOrigins": ["*"],
-            "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
-            "AllowedHeaders": ["*"],
-            "MaxAgeSeconds": 3000
-        }
-    ]
-}
-```
+### 1.4 Create IAM Role for EC2
 
-## Step 2: Create IAM Role for EC2
+1. Go to IAM Console
+2. Create role for EC2 service
+3. Attach policies:
+   - `AmazonS3FullAccess` (or custom policy for your bucket)
+   - `AmazonRDSDataFullAccess`
+4. Name: `FileManagerEC2Role`
 
-### Create IAM Role
+## Step 2: Launch and Configure EC2 Instance
+
+### 2.1 Launch EC2 Instance
+
 ```bash
-# Create trust policy
-cat > ec2-trust-policy.json << EOF
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Principal": {
-                "Service": "ec2.amazonaws.com"
-            },
-            "Action": "sts:AssumeRole"
-        }
-    ]
-}
-EOF
-
-# Create the role
-aws iam create-role --role-name EC2-S3-Role --assume-role-policy-document file://ec2-trust-policy.json
-
-# Create S3 access policy
-cat > s3-access-policy.json << EOF
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:GetObject",
-                "s3:PutObject",
-                "s3:DeleteObject",
-                "s3:ListBucket",
-                "s3:GetBucketLocation"
-            ],
-            "Resource": [
-                "arn:aws:s3:::your-app-bucket/*",
-                "arn:aws:s3:::your-app-bucket"
-            ]
-        }
-    ]
-}
-EOF
-
-# Attach policy to role
-aws iam put-role-policy --role-name EC2-S3-Role --policy-name S3Access --policy-document file://s3-access-policy.json
-
-# Create instance profile
-aws iam create-instance-profile --instance-profile-name EC2-S3-Profile
-aws iam add-role-to-instance-profile --instance-profile-name EC2-S3-Profile --role-name EC2-S3-Role
-```
-
-## Step 3: Launch EC2 Instance
-
-### Create Security Group
-```bash
-# Create security group
-aws ec2 create-security-group --group-name file-manager-sg --description "Security group for file manager app"
-
-# Get security group ID
-SG_ID=$(aws ec2 describe-security-groups --group-names file-manager-sg --query 'SecurityGroups[0].GroupId' --output text)
-
-# Allow SSH (port 22)
-aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 22 --cidr 0.0.0.0/0
-
-# Allow HTTP (port 80)
-aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 80 --cidr 0.0.0.0/0
-
-# Allow HTTPS (port 443)
-aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 443 --cidr 0.0.0.0/0
-
-# Allow app port (5000)
-aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 5000 --cidr 0.0.0.0/0
-```
-
-### Launch EC2 Instance
-```bash
-# Launch EC2 instance (replace with your key pair name)
+# Launch instance (replace security-group-id and key-name)
 aws ec2 run-instances \
-    --image-id ami-0c55b159cbfafe1d0 \
-    --count 1 \
-    --instance-type t3.micro \
-    --key-name your-key-pair \
-    --security-group-ids $SG_ID \
-    --iam-instance-profile Name=EC2-S3-Profile \
-    --user-data file://user-data.sh
+  --image-id ami-0c02fb55956c7d316 \
+  --count 1 \
+  --instance-type t3.micro \
+  --key-name YOUR-KEY-NAME \
+  --security-group-ids sg-YOUR-SECURITY-GROUP-ID \
+  --iam-instance-profile Name=FileManagerEC2Role \
+  --user-data file://user-data.sh \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=FileManagerApp}]'
 ```
 
-## Step 4: Prepare Application for AWS Deployment
+### 2.2 Create User Data Script
 
-### Create AWS Configuration Files
-
-Create `aws-config.js`:
-```javascript
-import AWS from 'aws-sdk';
-
-// Configure AWS SDK
-AWS.config.update({
-  region: process.env.AWS_REGION || 'us-east-1'
-});
-
-export const s3 = new AWS.S3();
-export const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'your-app-bucket';
-```
-
-### Update Object Storage Service for AWS S3
-
-Create `server/aws-storage.ts`:
-```typescript
-import AWS from 'aws-sdk';
-import { Response } from 'express';
-import { randomUUID } from 'crypto';
-
-const s3 = new AWS.S3({
-  region: process.env.AWS_REGION || 'us-east-1'
-});
-
-const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'your-app-bucket';
-
-export class AWSStorageService {
-  async getSignedUploadUrl(key: string): Promise<string> {
-    const params = {
-      Bucket: BUCKET_NAME,
-      Key: key,
-      Expires: 900, // 15 minutes
-      ContentType: 'application/octet-stream'
-    };
-    
-    return s3.getSignedUrl('putObject', params);
-  }
-
-  async getSignedDownloadUrl(key: string): Promise<string> {
-    const params = {
-      Bucket: BUCKET_NAME,
-      Key: key,
-      Expires: 3600 // 1 hour
-    };
-    
-    return s3.getSignedUrl('getObject', params);
-  }
-
-  async deleteObject(key: string): Promise<void> {
-    await s3.deleteObject({
-      Bucket: BUCKET_NAME,
-      Key: key
-    }).promise();
-  }
-
-  async listObjects(prefix?: string) {
-    const params = {
-      Bucket: BUCKET_NAME,
-      Prefix: prefix || ''
-    };
-    
-    const result = await s3.listObjectsV2(params).promise();
-    return result.Contents || [];
-  }
-
-  streamObject(key: string, res: Response) {
-    const params = {
-      Bucket: BUCKET_NAME,
-      Key: key
-    };
-    
-    const stream = s3.getObject(params).createReadStream();
-    stream.pipe(res);
-  }
-}
-```
-
-### Update Routes for AWS S3
-Update your `server/routes.ts` to use AWS S3 instead of Google Cloud Storage:
-
-```typescript
-import { AWSStorageService } from './aws-storage';
-
-// Replace ObjectStorageService with AWSStorageService
-const storageService = new AWSStorageService();
-
-// Update upload URL endpoint
-app.post("/api/files/upload-url", async (req, res) => {
-  try {
-    const fileId = randomUUID();
-    const key = `uploads/${fileId}`;
-    const uploadURL = await storageService.getSignedUploadUrl(key);
-    
-    res.json({ uploadURL, key });
-  } catch (error) {
-    console.error("Error generating upload URL:", error);
-    res.status(500).json({ error: "Failed to generate upload URL" });
-  }
-});
-
-// Update file serving endpoint
-app.get("/objects/:key(*)", async (req, res) => {
-  try {
-    const key = req.params.key;
-    storageService.streamObject(key, res);
-  } catch (error) {
-    console.error("Error serving file:", error);
-    res.status(404).json({ error: "File not found" });
-  }
-});
-```
-
-## Step 5: EC2 Setup Script
-
-Create `user-data.sh` for automated EC2 setup:
+Create `user-data.sh`:
 ```bash
 #!/bin/bash
 yum update -y
-yum install -y docker git
+yum install -y git
 
-# Install Node.js 20
-curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+# Install Node.js 18
+curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
 yum install -y nodejs
 
-# Start Docker
-service docker start
-usermod -a -G docker ec2-user
-
-# Install PM2 globally
+# Install PM2 for process management
 npm install -g pm2
 
 # Create app directory
-mkdir -p /opt/file-manager
-cd /opt/file-manager
+mkdir -p /home/ec2-user/app
+chown ec2-user:ec2-user /home/ec2-user/app
 
+# Install PostgreSQL client
+yum install -y postgresql
+
+echo "EC2 instance setup complete"
+```
+
+### 2.3 Deploy Application Code
+
+SSH into your EC2 instance:
+```bash
+ssh -i your-key.pem ec2-user@YOUR-EC2-IP
+```
+
+Clone and set up your application:
+```bash
 # Clone your repository (replace with your repo URL)
-git clone https://github.com/your-username/your-repo.git .
+git clone https://github.com/your-username/your-repo.git app
+cd app
 
 # Install dependencies
 npm install
 
-# Install AWS SDK
-npm install aws-sdk
-
-# Create systemd service
-cat > /etc/systemd/system/file-manager.service << EOF
-[Unit]
-Description=File Manager App
-After=network.target
-
-[Service]
-Type=simple
-User=ec2-user
-WorkingDirectory=/opt/file-manager
-Environment=NODE_ENV=production
-Environment=PORT=5000
-Environment=S3_BUCKET_NAME=your-app-bucket
-Environment=AWS_REGION=us-east-1
-ExecStart=/usr/bin/node server/index.js
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable and start service
-systemctl enable file-manager
-systemctl start file-manager
-
-# Install and configure Nginx
-amazon-linux-extras install nginx1 -y
-
-# Configure Nginx
-cat > /etc/nginx/conf.d/file-manager.conf << EOF
-server {
-    listen 80;
-    server_name _;
-
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-    }
-}
-EOF
-
-# Start Nginx
-systemctl enable nginx
-systemctl start nginx
+# Build the application
+npm run build
 ```
 
-## Step 6: Environment Variables
+## Step 3: Configure Environment Variables
 
-Create `.env` file on your EC2 instance:
+Create `.env` file on EC2:
 ```bash
+# Database
+DATABASE_URL=postgresql://filemanager:YOUR-DB-PASSWORD@your-db-endpoint:5432/filemanager
+PGHOST=your-db-endpoint
+PGPORT=5432
+PGUSER=filemanager
+PGPASSWORD=YOUR-DB-PASSWORD
+PGDATABASE=filemanager
+
+# Session
+SESSION_SECRET=your-very-long-random-secret-key-here
+
+# AWS S3
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=your-filemanager-bucket-unique-name
+DEFAULT_OBJECT_STORAGE_BUCKET_ID=your-filemanager-bucket-unique-name
+PUBLIC_OBJECT_SEARCH_PATHS=public/
+PRIVATE_OBJECT_DIR=private/
+
+# Application
 NODE_ENV=production
 PORT=5000
-S3_BUCKET_NAME=your-app-bucket
-AWS_REGION=us-east-1
-DATABASE_URL=postgresql://username:password@your-db-host:5432/database
 ```
 
-## Step 7: Database Setup
+## Step 4: Set Up Database
 
-### Option A: Amazon RDS PostgreSQL
+Run database migrations:
 ```bash
-# Create RDS instance
-aws rds create-db-instance \
-    --db-instance-identifier file-manager-db \
-    --db-instance-class db.t3.micro \
-    --engine postgres \
-    --master-username admin \
-    --master-user-password your-secure-password \
-    --allocated-storage 20 \
-    --vpc-security-group-ids $SG_ID
+# Push database schema
+npm run db:push
+
+# Create default admin user (optional)
+node -e "
+const { AuthService } = require('./server/auth');
+AuthService.createUser({
+  username: 'admin',
+  password: 'your-admin-password',
+  role: 'admin'
+}).then(() => console.log('Admin user created'));
+"
 ```
 
-### Option B: Use Neon (Current Setup)
-Keep your existing Neon database connection and update the DATABASE_URL in your environment variables.
+## Step 5: Configure Process Management
 
-## Step 8: SSL Certificate (Optional)
+Create PM2 ecosystem file `ecosystem.config.js`:
+```javascript
+module.exports = {
+  apps: [{
+    name: 'filemanager',
+    script: 'server/index.js',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 5000
+    },
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G'
+  }]
+}
+```
 
-### Using Let's Encrypt with Certbot
+Start the application:
 ```bash
-# Install certbot
-yum install -y certbot python3-certbot-nginx
-
-# Get SSL certificate
-certbot --nginx -d yourdomain.com
-
-# Auto-renewal
-echo "0 12 * * * /usr/bin/certbot renew --quiet" | crontab -
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
 ```
 
-## Step 9: Deployment Commands
+## Step 6: Set Up Load Balancer (Optional but Recommended)
 
-### Manual Deployment
+### 6.1 Create Application Load Balancer
+
+1. Go to EC2 Console → Load Balancers
+2. Create Application Load Balancer
+3. Configure:
+   - Name: `FileManagerALB`
+   - Scheme: Internet-facing
+   - Listeners: HTTP (80) and HTTPS (443)
+   - Availability Zones: Select at least 2
+4. Security Groups: Create new or use existing
+5. Target Group:
+   - Type: Instance
+   - Protocol: HTTP
+   - Port: 5000
+   - Health check path: `/api/health`
+6. Register your EC2 instance as target
+
+### 6.2 Configure SSL Certificate
+
+1. Request certificate in AWS Certificate Manager
+2. Add certificate to HTTPS listener in load balancer
+3. Update security groups to allow HTTPS traffic
+
+## Step 7: Configure Domain (Optional)
+
+### 7.1 Set Up Route 53
+
+1. Create hosted zone for your domain
+2. Create A record pointing to load balancer
+3. Update nameservers at domain registrar
+
+## Step 8: Security Hardening
+
+### 8.1 Update Security Groups
+
+Remove direct access to EC2:
 ```bash
-# SSH into your EC2 instance
-ssh -i your-key.pem ec2-user@your-ec2-ip
-
-# Navigate to app directory
-cd /opt/file-manager
-
-# Pull latest changes
-git pull origin main
-
-# Install dependencies
-npm install
-
-# Build the app
-npm run build
-
-# Restart the service
-sudo systemctl restart file-manager
+# Remove direct HTTP access to EC2 (traffic should go through ALB)
+aws ec2 revoke-security-group-ingress --group-name FileManagerEC2 --protocol tcp --port 5000 --cidr 0.0.0.0/0
 ```
 
-### Automated Deployment Script
-Create `deploy.sh`:
+### 8.2 Enable S3 Bucket Policies
+
+Create bucket policy for secure access:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadForGetBucketObjects",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::your-filemanager-bucket-unique-name/public/*"
+    },
+    {
+      "Sid": "DenyInsecureConnections",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::your-filemanager-bucket-unique-name",
+        "arn:aws:s3:::your-filemanager-bucket-unique-name/*"
+      ],
+      "Condition": {
+        "Bool": {
+          "aws:SecureTransport": "false"
+        }
+      }
+    }
+  ]
+}
+```
+
+## Step 9: Monitoring and Backup
+
+### 9.1 Set Up CloudWatch
+
+1. Install CloudWatch agent on EC2
+2. Monitor application logs
+3. Set up alerts for high CPU, memory usage
+
+### 9.2 Enable RDS Backups
+
+1. Enable automated backups in RDS
+2. Set backup retention period
+3. Enable point-in-time recovery
+
+### 9.3 S3 Backup Strategy
+
+1. Enable S3 versioning (already done)
+2. Set up S3 lifecycle policies
+3. Consider cross-region replication
+
+## Step 10: Deployment Script
+
+Create `deploy.sh` for easy updates:
 ```bash
 #!/bin/bash
-set -e
-
-echo "Starting deployment..."
+echo "Deploying File Manager Application..."
 
 # Pull latest code
 git pull origin main
@@ -434,101 +341,53 @@ npm install
 # Build application
 npm run build
 
-# Run database migrations if needed
-npm run db:migrate
+# Run database migrations
+npm run db:push
 
 # Restart application
-sudo systemctl restart file-manager
+pm2 restart filemanager
 
-# Check status
-sudo systemctl status file-manager
-
-echo "Deployment completed!"
+echo "Deployment complete!"
 ```
 
-## Step 10: Monitoring and Logs
+## Cost Optimization Tips
 
-### View Application Logs
-```bash
-# Service logs
-sudo journalctl -u file-manager -f
-
-# PM2 logs (if using PM2)
-pm2 logs
-
-# Nginx logs
-sudo tail -f /var/log/nginx/access.log
-sudo tail -f /var/log/nginx/error.log
-```
-
-### Health Check Endpoint
-Add to your Express app:
-```javascript
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'healthy', 
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
-});
-```
+1. **Use Reserved Instances**: Save up to 75% on EC2 costs
+2. **Right-size Instances**: Monitor usage and adjust instance types
+3. **S3 Storage Classes**: Move old files to cheaper storage tiers
+4. **CloudWatch Monitoring**: Set up billing alerts
+5. **Auto Scaling**: Scale EC2 instances based on demand
 
 ## Security Best Practices
 
-1. **Keep systems updated**: Regularly update EC2 instance and dependencies
-2. **Use IAM roles**: Don't hardcode AWS credentials
-3. **Enable CloudTrail**: Track API calls for auditing
-4. **Set up CloudWatch**: Monitor application metrics
-5. **Use Security Groups**: Restrict access to necessary ports only
-6. **Enable S3 bucket versioning**: Protect against accidental deletions
-7. **Regular backups**: Backup your database regularly
-
-## Scaling Considerations
-
-### Load Balancing
-- Use Application Load Balancer for multiple EC2 instances
-- Configure auto-scaling groups based on CPU/memory usage
-
-### CDN Setup
-- Use CloudFront for static asset delivery
-- Configure S3 bucket as CloudFront origin
-
-### Database Scaling
-- Use RDS read replicas for read-heavy workloads
-- Consider connection pooling for database connections
-
-## Cost Optimization
-
-1. **Use Reserved Instances**: For predictable workloads
-2. **S3 Intelligent Tiering**: Automatically move objects to cheaper storage classes
-3. **CloudWatch monitoring**: Track costs and set up billing alerts
-4. **Right-size instances**: Monitor CPU/memory usage and adjust instance types
+1. **Regular Updates**: Keep OS and dependencies updated
+2. **Access Control**: Use IAM roles, not access keys
+3. **Network Security**: Use private subnets for databases
+4. **Encryption**: Enable encryption at rest and in transit
+5. **Monitoring**: Set up AWS CloudTrail for audit logging
 
 ## Troubleshooting
 
-### Common Issues
+### Common Issues:
 
-1. **502 Bad Gateway**: Check if application is running on port 5000
-2. **S3 Access Denied**: Verify IAM role permissions and bucket policy
-3. **Database Connection**: Check security groups and connection strings
-4. **SSL Issues**: Verify domain DNS settings and certificate installation
+1. **Database Connection**: Check security groups and RDS endpoint
+2. **S3 Access**: Verify IAM roles and bucket policies  
+3. **Application Errors**: Check PM2 logs with `pm2 logs`
+4. **Load Balancer**: Verify target group health checks
 
-### Debug Commands
+### Useful Commands:
 ```bash
 # Check application status
-sudo systemctl status file-manager
+pm2 status
 
-# Test S3 connectivity
-aws s3 ls s3://your-app-bucket
+# View logs
+pm2 logs filemanager
 
-# Check disk space
-df -h
+# Restart application
+pm2 restart filemanager
 
-# Check memory usage
-free -m
-
-# Check network connectivity
-netstat -tlnp
+# Monitor system resources
+htop
 ```
 
-This guide should help you successfully deploy your file management application to AWS EC2 with S3 storage integration.
+This deployment setup provides a production-ready, scalable, and secure file management application on AWS infrastructure.
