@@ -240,25 +240,33 @@ nano .env
 
 **Step 5: Setup Database**
 ```bash
-# Create database tables
+# Load environment variables and create database tables
+source .env
 npm run db:push
 
-# Create the admin user account
-node -e "
-const { AuthService } = require('./server/auth');
-(async () => {
-  try {
-    await AuthService.createUser({
-      username: 'admin', 
-      password: 'Admin123!',
-      role: 'admin'
-    });
-    console.log('✓ Admin user created successfully');
-  } catch (error) {
-    console.error('✗ Error creating admin user:', error.message);
-  }
-})();
+# If db:push fails, try with explicit environment:
+# DATABASE_URL=postgresql://filemanager:filemanager123@localhost:5432/filemanager npm run db:push
+
+# Create the admin user account (for ES modules)
+node --input-type=module -e "
+import { AuthService } from './server/auth.js';
+try {
+  await AuthService.createUser({
+    username: 'admin', 
+    password: 'Admin123!',
+    role: 'admin'
+  });
+  console.log('✓ Admin user created successfully');
+} catch (error) {
+  console.error('✗ Error creating admin user:', error.message);
+}
 "
+
+# Alternative if above fails - create admin user manually via database
+sudo -u postgres psql filemanager << 'SQL'
+INSERT INTO users (username, password_hash, role) 
+VALUES ('admin', '$2b$10$hash_will_be_generated', 'admin');
+SQL
 ```
 
 **Step 6: Configure Process Manager**
