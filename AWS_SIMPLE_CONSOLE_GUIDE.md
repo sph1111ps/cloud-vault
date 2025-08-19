@@ -174,30 +174,55 @@ sudo systemctl start postgresql
 
 **Step 2: Get Your Application Code**
 
+**2a: Setup Directory Structure**
+```bash
+# Make sure you're in the right location
+cd /home/ec2-user
+
+# Create app directory with proper permissions
+mkdir -p app
+sudo chown -R ec2-user:ec2-user app
+cd app
+
+# Verify you can access the directory
+pwd
+# Should show: /home/ec2-user/app
+```
+
+**2b: Clone Repository**
+
 Choose **Option A** (Public Repository) or **Option B** (Private Repository):
 
 **Option A: Public Repository**
 ```bash
-# Replace with your actual repository URL
-git clone https://github.com/your-username/your-repo.git app
-cd app
+# Clone into current directory (note the dot at the end)
+git clone https://github.com/sph1111ps/cloud-vault.git .
+
+# Or clone into a subdirectory
+git clone https://github.com/sph1111ps/cloud-vault.git myapp
+cd myapp
 ```
 
-**Option B: Private Repository (requires setup)**
+**Option B: Private Repository (requires authentication)**
 ```bash
-# First, set up authentication - choose one method:
-
 # Method 1: Personal Access Token
-git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/your-username/your-repo.git app
+git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/sph1111ps/cloud-vault.git .
 
 # Method 2: SSH Key (if you set up SSH keys)
-git clone git@github.com:your-username/your-repo.git app
+git clone git@github.com:sph1111ps/cloud-vault.git .
 
-cd app
+# Verify files are present
+ls -la
 ```
 
 **Step 3: Install Dependencies**
 ```bash
+# Verify you're in the correct directory with package.json
+ls -la package.json
+
+# If you don't see package.json, you may need to navigate to the cloned directory:
+# cd cloud-vault  # or whatever your repo directory is named
+
 # Install all required packages
 npm install
 
