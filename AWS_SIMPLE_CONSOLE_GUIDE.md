@@ -161,21 +161,56 @@ echo "Script completed"
 2. **Connect** → **EC2 Instance Connect**
 
 ### Setup Application
+
+**Step 1: Verify Services are Running**
 ```bash
-# Verify PostgreSQL is running
+# Check if PostgreSQL started correctly
 sudo systemctl status postgresql
+# You should see "active (running)" in green
 
-# Clone your repository
-git clone https://github.com/your-repo.git app
+# If PostgreSQL isn't running, start it:
+sudo systemctl start postgresql
+```
+
+**Step 2: Get Your Application Code**
+
+Choose **Option A** (Public Repository) or **Option B** (Private Repository):
+
+**Option A: Public Repository**
+```bash
+# Replace with your actual repository URL
+git clone https://github.com/your-username/your-repo.git app
 cd app
+```
 
-# Install dependencies
+**Option B: Private Repository (requires setup)**
+```bash
+# First, set up authentication - choose one method:
+
+# Method 1: Personal Access Token
+git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/your-username/your-repo.git app
+
+# Method 2: SSH Key (if you set up SSH keys)
+git clone git@github.com:your-username/your-repo.git app
+
+cd app
+```
+
+**Step 3: Install Dependencies**
+```bash
+# Install all required packages
 npm install
-npm run build
 
-# Create environment file
+# Build the application
+npm run build
+```
+
+**Step 4: Create Configuration File**
+```bash
+# Create environment variables file
+# IMPORTANT: Replace "your-bucket-name" with your actual S3 bucket name from Phase 1
 cat > .env << 'EOF'
-# Local PostgreSQL Database
+# Database Configuration
 DATABASE_URL=postgresql://filemanager:filemanager123@localhost:5432/filemanager
 PGHOST=localhost
 PGPORT=5432
@@ -183,42 +218,52 @@ PGUSER=filemanager
 PGPASSWORD=filemanager123
 PGDATABASE=filemanager
 
-# Session secret
-SESSION_SECRET=your-very-long-secure-session-secret-key-here
+# Security
+SESSION_SECRET=super-secure-session-secret-key-change-this-in-production
 
-# AWS S3 (replace with your bucket name)
+# AWS S3 Storage (REPLACE "your-bucket-name" with your actual bucket name)
 AWS_REGION=us-east-1
 AWS_S3_BUCKET=your-bucket-name
 DEFAULT_OBJECT_STORAGE_BUCKET_ID=your-bucket-name
 PUBLIC_OBJECT_SEARCH_PATHS=public/
 PRIVATE_OBJECT_DIR=private/
 
-# Application settings
+# Application Settings
 NODE_ENV=production
 PORT=5000
 EOF
 
-# Initialize database schema
+# IMPORTANT: Edit the .env file to add your real bucket name
+nano .env
+# Change "your-bucket-name" to your actual S3 bucket name, then save (Ctrl+X, Y, Enter)
+```
+
+**Step 5: Setup Database**
+```bash
+# Create database tables
 npm run db:push
 
-# Create admin user
+# Create the admin user account
 node -e "
 const { AuthService } = require('./server/auth');
 (async () => {
   try {
     await AuthService.createUser({
-      username: 'admin',
+      username: 'admin', 
       password: 'Admin123!',
       role: 'admin'
     });
-    console.log('Admin user created successfully');
+    console.log('✓ Admin user created successfully');
   } catch (error) {
-    console.error('Error creating admin user:', error.message);
+    console.error('✗ Error creating admin user:', error.message);
   }
 })();
 "
+```
 
-# Setup PM2 for process management
+**Step 6: Configure Process Manager**
+```bash
+# Create PM2 configuration
 cat > ecosystem.config.js << 'EOF'
 module.exports = {
   apps: [{
@@ -235,11 +280,31 @@ module.exports = {
   }]
 }
 EOF
+```
 
-# Start application
+**Step 7: Start Your Application**
+```bash
+# Start the application with PM2
 pm2 start ecosystem.config.js
+
+# Save PM2 configuration
 pm2 save
+
+# Set up PM2 to start on boot
 pm2 startup
+# Follow any instructions PM2 gives you (usually a sudo command to run)
+
+# Check if everything is running
+pm2 status
+```
+
+**Step 8: Verify It's Working**
+```bash
+# Check if your app is responding
+curl http://localhost:5000
+
+# You should see HTML output. If you get an error, check logs:
+pm2 logs filemanager
 ```
 
 ### Test Your Application
