@@ -1,559 +1,459 @@
-# AWS Console Deployment Guide
-## Deploy Your File Management App Using AWS Web Interface
+# AWS Console Step-by-Step Deployment Guide
 
-This guide walks you through deploying your file management application using the AWS Console (web interface) instead of command line tools.
+This guide provides detailed, click-by-click instructions for deploying your file management application using the AWS Management Console.
+
+## Part 1: Create RDS PostgreSQL Database
+
+### Step 1: Navigate to RDS
+1. Log into AWS Management Console
+2. Search for "RDS" in the services search bar
+3. Click on "RDS" from the dropdown
+
+### Step 2: Create Database
+1. Click **"Create database"** button (orange button)
+2. Choose **"Standard create"**
+3. Select **"PostgreSQL"** as engine type
+4. Select **"PostgreSQL 15.x"** (latest stable version)
+
+### Step 3: Configure Database Settings
+**Templates:**
+- For testing: Choose **"Free tier"**
+- For production: Choose **"Production"**
+
+**Settings:**
+- DB instance identifier: `filemanager-db`
+- Master username: `filemanager`
+- Check **"Auto generate a password"** (IMPORTANT: Save this password!)
+
+**DB instance class:**
+- Free tier: `db.t3.micro`
+- Production: `db.t3.small` or larger
+
+**Storage:**
+- Storage type: `gp2` (General Purpose SSD)
+- Allocated storage: `20` GiB minimum
+- Enable storage autoscaling: ✓
+
+### Step 4: Configure Connectivity
+**Network type:** IPv4
+**Virtual private cloud (VPC):** Default VPC
+**DB subnet group:** Default
+**Public access:** **Yes** (for initial setup)
+**VPC security group:** Create new
+- New VPC security group name: `filemanager-db-sg`
+
+**Availability zone:** No preference
+**Database port:** `5432`
+
+### Step 5: Database Authentication & Additional Configuration
+**Database authentication:** Password authentication
+**Monitoring:** Enable Enhanced monitoring
+**Initial database name:** `filemanager`
+**Backup retention period:** 7 days
+**Encryption:** Enable encryption (recommended)
+
+### Step 6: Create Database
+1. Review all settings
+2. Click **"Create database"**
+3. **SAVE THE AUTO-GENERATED PASSWORD** (you'll need it later)
+4. Wait for database status to become "Available" (10-15 minutes)
 
 ---
 
-## 🎯 Overview
-We'll set up:
-- S3 bucket for file storage
-- EC2 instance to run your application
-- IAM roles for secure access
-- Security groups for network access
-- Optional: RDS database (or keep your existing Neon database)
+## Part 2: Create S3 Bucket for File Storage
 
-**Estimated Time:** 30-45 minutes
+### Step 1: Navigate to S3
+1. Search for "S3" in the AWS Console
+2. Click on **"S3"** from the services
 
----
+### Step 2: Create Bucket
+1. Click **"Create bucket"** button
+2. **Bucket name:** `your-filemanager-files-[random-numbers]` 
+   (Must be globally unique - add random numbers)
+3. **AWS Region:** Choose your preferred region (e.g., us-east-1)
 
-## Step 1: Create S3 Bucket
+### Step 3: Configure Bucket Settings
+**Object Ownership:** ACLs disabled (recommended)
+**Block Public Access settings:**
+- ✓ Block all public access (we'll configure specific access later)
 
-### 1.1 Navigate to S3
-1. Go to [AWS Console](https://aws.amazon.com/console/)
-2. Sign in to your AWS account
-3. In the search bar, type "S3" and click on "S3"
+**Bucket Versioning:** Enable
+**Default encryption:**
+- Encryption key type: Amazon S3 managed keys (SSE-S3)
 
-### 1.2 Create Bucket
+### Step 4: Create Bucket
 1. Click **"Create bucket"**
-2. **Bucket name:** Enter a unique name like `my-filemanager-bucket-2025` (must be globally unique)
-3. **Region:** Select your preferred region (e.g., `us-east-1`)
-4. **Object Ownership:** Select "ACLs enabled"
-5. **Block Public Access:** Uncheck "Block all public access" (we'll configure this properly)
-6. Check the acknowledgment box
-7. **Bucket Versioning:** Enable (recommended)
-8. **Default encryption:** Enable with Amazon S3 managed keys (SSE-S3)
-9. Click **"Create bucket"**
+2. Note the bucket name for later use
 
-### 1.3 Configure CORS
-1. Click on your newly created bucket
-2. Go to **"Permissions"** tab
-3. Scroll down to **"Cross-origin resource sharing (CORS)"**
+### Step 5: Configure CORS
+1. Go to your newly created bucket
+2. Click **"Permissions"** tab
+3. Scroll to **"Cross-origin resource sharing (CORS)"**
 4. Click **"Edit"**
-5. Paste this configuration:
-
+5. Paste this CORS configuration:
 ```json
 [
     {
         "AllowedHeaders": ["*"],
         "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
         "AllowedOrigins": ["*"],
-        "ExposeHeaders": ["ETag"],
-        "MaxAgeSeconds": 3000
+        "ExposeHeaders": ["ETag"]
     }
 ]
 ```
-
 6. Click **"Save changes"**
 
-### 1.4 Configure Bucket Policy
-1. Still in **"Permissions"** tab
-2. Scroll to **"Bucket policy"**
-3. Click **"Edit"**
-4. Paste this policy (replace `YOUR-BUCKET-NAME` with your actual bucket name):
+---
 
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "AllowEC2Access",
-            "Effect": "Allow",
-            "Principal": {
-                "AWS": "arn:aws:iam::YOUR-ACCOUNT-ID:role/FileManager-EC2-Role"
-            },
-            "Action": [
-                "s3:GetObject",
-                "s3:PutObject",
-                "s3:DeleteObject",
-                "s3:ListBucket"
-            ],
-            "Resource": [
-                "arn:aws:s3:::YOUR-BUCKET-NAME/*",
-                "arn:aws:s3:::YOUR-BUCKET-NAME"
-            ]
-        }
-    ]
-}
-```
+## Part 3: Create IAM Role for EC2
 
-**Note:** We'll get your Account ID and create the role in the next steps. Save this policy draft for now.
+### Step 1: Navigate to IAM
+1. Search for "IAM" in AWS Console
+2. Click on **"IAM"** from services
+
+### Step 2: Create Role
+1. Click **"Roles"** in left sidebar
+2. Click **"Create role"**
+3. **Trusted entity type:** AWS service
+4. **Use case:** EC2
+5. Click **"Next"**
+
+### Step 3: Attach Policies
+Search and select these policies:
+- `AmazonS3FullAccess` (or create custom policy for your specific bucket)
+- `AmazonRDSDataFullAccess`
+- `CloudWatchAgentServerPolicy`
+
+Click **"Next"**
+
+### Step 4: Name and Create Role
+- **Role name:** `FileManagerEC2Role`
+- **Description:** "Role for File Manager EC2 instance with S3 and RDS access"
+- Click **"Create role"**
 
 ---
 
-## Step 2: Create IAM Role
+## Part 4: Launch EC2 Instance
 
-### 2.1 Navigate to IAM
-1. In AWS Console search bar, type "IAM" and click on "IAM"
-2. In the left sidebar, click **"Roles"**
+### Step 1: Navigate to EC2
+1. Search for "EC2" in AWS Console
+2. Click **"EC2"** from services
 
-### 2.2 Create Role
-1. Click **"Create role"**
-2. **Trusted entity type:** Select "AWS service"
-3. **Use case:** Select "EC2"
-4. Click **"Next"**
+### Step 2: Launch Instance
+1. Click **"Launch instance"** button
+2. **Name:** `FileManager-App`
 
-### 2.3 Add Permissions
-1. In the search box, type "S3"
-2. Check **"AmazonS3FullAccess"** (for simplicity; you can create custom policy later)
-3. Also search and add **"CloudWatchAgentServerPolicy"** (for monitoring)
-4. Click **"Next"**
+### Step 3: Choose AMI
+1. **Application and OS Images:** Amazon Linux
+2. Select **"Amazon Linux 2023 AMI"** (Free tier eligible)
 
-### 2.4 Name and Create
-1. **Role name:** `FileManager-EC2-Role`
-2. **Description:** "Role for EC2 instance to access S3 bucket for file management app"
-3. Click **"Create role"**
+### Step 4: Choose Instance Type
+1. **Instance type:** `t3.micro` (Free tier) or `t3.small` (production)
+2. Click **"Next"**
 
-### 2.5 Get Your Account ID
-1. Click on your username in the top right corner
-2. Note down your **Account ID** (12-digit number)
-3. Go back to your S3 bucket policy and replace `YOUR-ACCOUNT-ID` with this number
-4. Replace `YOUR-BUCKET-NAME` with your bucket name
-5. Save the bucket policy
+### Step 5: Configure Key Pair
+**Key pair (login):**
+- If you have a key pair: Select existing
+- If not: Click **"Create new key pair"**
+  - Name: `filemanager-key`
+  - Key pair type: RSA
+  - Private key format: .pem
+  - Click **"Create key pair"** and DOWNLOAD the file
 
----
+### Step 6: Network Settings
+1. Click **"Edit"** next to Network settings
+2. **VPC:** Default VPC
+3. **Subnet:** Default subnet
+4. **Auto-assign public IP:** Enable
 
-## Step 3: Create Security Group
-
-### 3.1 Navigate to EC2
-1. In AWS Console search bar, type "EC2" and click on "EC2"
-2. In the left sidebar, click **"Security Groups"**
-
-### 3.2 Create Security Group
+**Security group:**
 1. Click **"Create security group"**
-2. **Security group name:** `filemanager-security-group`
-3. **Description:** "Security group for file management application"
-4. **VPC:** Leave default
+2. **Security group name:** `filemanager-ec2-sg`
+3. **Description:** "Security group for File Manager EC2"
 
-### 3.3 Configure Inbound Rules
-Click **"Add rule"** for each of these:
+**Inbound Security Group Rules:**
+Add these rules (click "Add security group rule" for each):
+1. Type: SSH, Port: 22, Source: My IP
+2. Type: HTTP, Port: 80, Source: Anywhere (0.0.0.0/0)
+3. Type: HTTPS, Port: 443, Source: Anywhere (0.0.0.0/0)
+4. Type: Custom TCP, Port: 5000, Source: Anywhere (0.0.0.0/0)
 
-**Rule 1 - SSH:**
-- Type: SSH
-- Protocol: TCP
-- Port: 22
-- Source: My IP (automatically detects your IP)
+### Step 7: Configure Storage
+**Storage (volumes):**
+- Size: 20 GiB (minimum)
+- Volume type: gp3
+- Encryption: Enabled
 
-**Rule 2 - HTTP:**
-- Type: HTTP
-- Protocol: TCP
-- Port: 80
-- Source: Anywhere-IPv4 (0.0.0.0/0)
+### Step 8: Advanced Details
+**IAM instance profile:** Select `FileManagerEC2Role`
 
-**Rule 3 - HTTPS:**
-- Type: HTTPS
-- Protocol: TCP
-- Port: 443
-- Source: Anywhere-IPv4 (0.0.0.0/0)
-
-**Rule 4 - Custom (App Port):**
-- Type: Custom TCP
-- Protocol: TCP
-- Port: 5000
-- Source: Anywhere-IPv4 (0.0.0.0/0)
-
-### 3.4 Create Security Group
-1. Leave **Outbound rules** as default (allows all outbound traffic)
-2. Click **"Create security group"**
-
----
-
-## Step 4: Launch EC2 Instance
-
-### 4.1 Launch Instance
-1. In EC2 Dashboard, click **"Launch instance"**
-
-### 4.2 Configure Instance
-**Name:** `FileManager-App-Server`
-
-**Application and OS Images:**
-- Select **"Amazon Linux 2023 AMI"** (Free tier eligible)
-
-**Instance type:**
-- Select **"t3.micro"** (Free tier eligible) or **"t3.small"** for better performance
-
-**Key pair:**
-- If you have an existing key pair, select it
-- If not, click **"Create new key pair"**:
-  - Name: `filemanager-keypair`
-  - Type: RSA
-  - Format: .pem (for SSH)
-  - Click **"Create key pair"** and download the file
-
-**Network settings:**
-- Click **"Edit"**
-- **VPC:** Leave default
-- **Subnet:** Leave default
-- **Auto-assign public IP:** Enable
-- **Firewall (security groups):** Select existing security group
-- Choose `filemanager-security-group` that we created
-
-**Configure storage:**
-- Size: 20 GB (or more if you expect large files)
-- Volume type: gp3 (General Purpose SSD)
-
-### 4.3 Advanced Details
-1. Expand **"Advanced details"**
-2. **IAM instance profile:** Select `FileManager-EC2-Role`
-3. **User data:** Paste this script to automatically set up the server:
-
+**User data:** Paste this script:
 ```bash
 #!/bin/bash
 yum update -y
+yum install -y git postgresql15
 
-# Install Node.js 20
-curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
-yum install -y nodejs git
+# Install Node.js 18
+curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+yum install -y nodejs
 
-# Install PM2 for process management
+# Install PM2
 npm install -g pm2
 
-# Create application directory
-mkdir -p /opt/file-manager
-cd /opt/file-manager
+# Create app directory
+mkdir -p /home/ec2-user/app
+chown ec2-user:ec2-user /home/ec2-user/app
 
-# Install AWS CLI v2
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-yum install -y unzip
-unzip awscliv2.zip
-./aws/install
-
-# Create a placeholder for the app (you'll upload your code later)
-echo "Application directory created. Upload your code here." > README.txt
-
-# Install and configure Nginx
-yum install -y nginx
-
-# Create Nginx configuration
-cat > /etc/nginx/conf.d/filemanager.conf << 'EOF'
-server {
-    listen 80;
-    server_name _;
-    client_max_body_size 100M;
-
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    location /health {
-        proxy_pass http://localhost:5000/health;
-        access_log off;
-    }
-}
-EOF
-
-# Start and enable Nginx
-systemctl enable nginx
-systemctl start nginx
-
-# Create systemd service file for the app
-cat > /etc/systemd/system/file-manager.service << 'EOF'
-[Unit]
-Description=File Manager Application
-After=network.target
-
-[Service]
-Type=simple
-User=ec2-user
-WorkingDirectory=/opt/file-manager
-Environment=NODE_ENV=production
-Environment=PORT=5000
-EnvironmentFile=/opt/file-manager/.env
-ExecStart=/usr/bin/node server/index.js
-Restart=on-failure
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Set proper ownership
-chown -R ec2-user:ec2-user /opt/file-manager
-
-# Enable the service (don't start yet, as we need to upload code first)
-systemctl enable file-manager
-
-echo "EC2 instance setup complete!"
+echo "EC2 setup complete" > /home/ec2-user/setup.log
 ```
 
-### 4.4 Launch Instance
-1. **Number of instances:** 1
-2. Review all settings
-3. Click **"Launch instance"**
-4. Wait for the instance to be in "Running" state (about 2-3 minutes)
+### Step 9: Launch Instance
+1. Review all settings
+2. Click **"Launch instance"**
+3. Wait for instance state to become "Running"
+4. Note the **Public IPv4 address**
 
 ---
 
-## Step 5: Upload Your Application Code
+## Part 5: Deploy Your Application
 
-### 5.1 Get Instance IP
-1. In EC2 Dashboard, click **"Instances"**
+### Step 1: Connect to EC2 Instance
+1. Go to EC2 Console
 2. Select your instance
-3. Note the **"Public IPv4 address"**
+3. Click **"Connect"**
+4. Use **"EC2 Instance Connect"** (browser-based) or SSH
 
-### 5.2 Connect to Your Instance
-**Option A: EC2 Instance Connect (Browser-based)**
-1. Select your instance
-2. Click **"Connect"**
-3. Choose **"EC2 Instance Connect"**
-4. Click **"Connect"**
-
-**Option B: SSH (Local Terminal)**
+For SSH:
 ```bash
-ssh -i /path/to/your-keypair.pem ec2-user@YOUR-INSTANCE-IP
+ssh -i filemanager-key.pem ec2-user@YOUR-EC2-PUBLIC-IP
 ```
 
-### 5.3 Upload Your Code
-Once connected to your instance:
-
+### Step 2: Clone and Setup Application
 ```bash
-# Navigate to app directory
-cd /opt/file-manager
-
-# Clone your repository (replace with your GitHub repo)
-sudo -u ec2-user git clone https://github.com/your-username/your-repo.git .
+# Clone your repository (replace with your actual repo URL)
+git clone https://github.com/your-username/your-repo.git app
+cd app
 
 # Install dependencies
-sudo -u ec2-user npm install
+npm install
 
-# Install AWS SDK
-sudo -u ec2-user npm install aws-sdk
-
-# Create environment file
-sudo -u ec2-user cp .env.example .env
+# Build the application
+npm run build
 ```
 
-### 5.4 Configure Environment
-Edit the environment file:
+### Step 3: Create Environment File
 ```bash
-sudo -u ec2-user nano .env
+nano .env
 ```
 
-Update these values:
-```bash
+Paste this content (replace placeholders with your actual values):
+```env
+# Database (get endpoint from RDS Console)
+DATABASE_URL=postgresql://filemanager:YOUR-DB-PASSWORD@your-rds-endpoint:5432/filemanager
+PGHOST=your-rds-endpoint
+PGPORT=5432
+PGUSER=filemanager
+PGPASSWORD=YOUR-DB-PASSWORD
+PGDATABASE=filemanager
+
+# Session
+SESSION_SECRET=your-very-long-random-secret-key-here-make-it-complex
+
+# AWS S3
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=your-bucket-name
+DEFAULT_OBJECT_STORAGE_BUCKET_ID=your-bucket-name
+PUBLIC_OBJECT_SEARCH_PATHS=public/
+PRIVATE_OBJECT_DIR=private/
+
+# Application
 NODE_ENV=production
 PORT=5000
-S3_BUCKET_NAME=your-actual-bucket-name
-AWS_REGION=us-east-1
-DATABASE_URL=your-database-url
 ```
 
-### 5.5 Build and Start Application
+Save and exit (Ctrl+X, then Y, then Enter)
+
+### Step 4: Initialize Database
 ```bash
-# Build the application
-sudo -u ec2-user npm run build
+# Push database schema
+npm run db:push
 
-# Start the service
-sudo systemctl start file-manager
-
-# Check if it's running
-sudo systemctl status file-manager
-
-# Check logs
-sudo journalctl -u file-manager -f
-```
-
----
-
-## Step 6: Test Your Application
-
-### 6.1 Health Check
-```bash
-curl http://localhost:5000/health
-```
-
-### 6.2 Access via Browser
-1. Open your browser
-2. Go to `http://YOUR-INSTANCE-IP`
-3. You should see your file management application
-
----
-
-## Step 7: Set Up Custom Domain (Optional)
-
-### 7.1 Register Domain in Route 53
-1. Go to **Route 53** in AWS Console
-2. Click **"Registered domains"** > **"Register domain"**
-3. Search for your desired domain
-4. Complete the registration process
-
-### 7.2 Create Hosted Zone
-1. Go to **"Hosted zones"** > **"Create hosted zone"**
-2. Enter your domain name
-3. Click **"Create hosted zone"**
-
-### 7.3 Create A Record
-1. In your hosted zone, click **"Create record"**
-2. **Record type:** A
-3. **Value:** Your EC2 instance's public IP
-4. Click **"Create records"**
-
-### 7.4 Configure SSL Certificate
-1. Go to **AWS Certificate Manager**
-2. Click **"Request certificate"**
-3. **Certificate type:** Request a public certificate
-4. **Domain name:** your-domain.com
-5. **Validation method:** DNS validation
-6. Follow the validation process
-
----
-
-## Step 8: Monitoring and Maintenance
-
-### 8.1 CloudWatch Monitoring
-1. Go to **CloudWatch** in AWS Console
-2. Set up dashboards for:
-   - EC2 CPU utilization
-   - S3 storage usage
-   - Application logs
-
-### 8.2 Set Up Billing Alerts
-1. Go to **Billing and Cost Management**
-2. **Budgets** > **Create budget**
-3. Set up alerts for your expected monthly costs
-
-### 8.3 Regular Maintenance
-```bash
-# SSH into your instance regularly to:
-
-# Update system packages
-sudo yum update -y
-
-# Update your application
-cd /opt/file-manager
-git pull origin main
-npm install
-npm run build
-sudo systemctl restart file-manager
-
-# Check logs
-sudo journalctl -u file-manager -f
-
-# Monitor disk space
-df -h
-
-# Check memory usage
-free -m
-```
-
----
-
-## 🔧 Troubleshooting
-
-### Application Not Starting
-```bash
-# Check service status
-sudo systemctl status file-manager
-
-# View detailed logs
-sudo journalctl -u file-manager -f
-
-# Check if port is in use
-sudo netstat -tlnp | grep 5000
-
-# Test Node.js directly
-cd /opt/file-manager && node server/index.js
-```
-
-### Cannot Access Website
-1. **Check Security Group:** Ensure port 80 and 443 are open
-2. **Check Nginx:** `sudo systemctl status nginx`
-3. **Check Instance:** Ensure it's running and has public IP
-4. **Check Route 53:** If using custom domain, verify DNS records
-
-### S3 Access Issues
-```bash
-# Test S3 access from EC2
-aws s3 ls s3://your-bucket-name
-
-# Check IAM role
-aws sts get-caller-identity
-
-# Test S3 permissions
-aws s3 cp test.txt s3://your-bucket-name/test.txt
-```
-
-### Database Connection Issues
-```bash
-# Test database connection
+# Create admin user
 node -e "
-const { neon } = require('@neondatabase/serverless');
-const sql = neon('your-database-url');
-sql\`SELECT 1\`.then(console.log).catch(console.error);
+const { AuthService } = require('./server/auth');
+(async () => {
+  try {
+    const user = await AuthService.createUser({
+      username: 'admin',
+      password: 'Admin123!',
+      role: 'admin'
+    });
+    console.log('Admin user created:', user.username);
+  } catch (error) {
+    console.error('Error:', error.message);
+  }
+})();
 "
 ```
 
----
+### Step 5: Start Application with PM2
+```bash
+# Create PM2 config
+cat > ecosystem.config.js << 'EOF'
+module.exports = {
+  apps: [{
+    name: 'filemanager',
+    script: 'server/index.js',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 5000
+    },
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G'
+  }]
+}
+EOF
 
-## 💰 Cost Optimization
+# Start with PM2
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+```
 
-### Free Tier Usage
-- **EC2:** t3.micro instances (750 hours/month)
-- **S3:** 5GB storage, 20,000 GET requests, 2,000 PUT requests
-- **Data Transfer:** 15GB outbound per month
-
-### Cost Monitoring
-1. Set up billing alerts
-2. Use AWS Cost Explorer
-3. Review usage monthly
-4. Consider Reserved Instances for production
-
-### Optimization Tips
-- Use S3 Intelligent Tiering
-- Enable S3 lifecycle policies
-- Right-size your EC2 instances
-- Use CloudFront for static content delivery
-
----
-
-## 🔒 Security Best Practices
-
-### Immediate Actions
-- [ ] Change default SSH port (optional)
-- [ ] Set up fail2ban for SSH protection
-- [ ] Enable CloudTrail for API logging
-- [ ] Set up AWS Config for compliance
-
-### Regular Security Tasks
-- [ ] Update system packages monthly
-- [ ] Review IAM permissions quarterly
-- [ ] Monitor CloudWatch logs
-- [ ] Backup database regularly
-- [ ] Test disaster recovery procedures
+### Step 6: Test Your Application
+1. Open browser
+2. Go to `http://YOUR-EC2-PUBLIC-IP:5000`
+3. Login with username: `admin`, password: `Admin123!`
 
 ---
 
-## 🚀 Next Steps
+## Part 6: Set Up Application Load Balancer (Production)
 
-1. **SSL Certificate:** Set up HTTPS with Let's Encrypt or AWS Certificate Manager
-2. **Auto Scaling:** Configure auto-scaling groups for high availability
-3. **Load Balancer:** Add Application Load Balancer for multiple instances
-4. **CI/CD Pipeline:** Set up automated deployments with GitHub Actions
-5. **Backup Strategy:** Implement automated backups for your data
-6. **Monitoring:** Set up comprehensive monitoring and alerting
+### Step 1: Create Target Group
+1. Go to **EC2 Console** → **Target Groups** (left sidebar)
+2. Click **"Create target group"**
+3. **Target type:** Instances
+4. **Target group name:** `filemanager-tg`
+5. **Protocol:** HTTP
+6. **Port:** 5000
+7. **VPC:** Default VPC
+8. **Health check path:** `/api/auth/me`
+9. Click **"Next"**
+10. **Select your EC2 instance**
+11. **Port:** 5000
+12. Click **"Include as pending below"**
+13. Click **"Create target group"**
+
+### Step 2: Create Application Load Balancer
+1. Go to **EC2 Console** → **Load Balancers**
+2. Click **"Create Load Balancer"**
+3. Select **"Application Load Balancer"**
+4. **Name:** `filemanager-alb`
+5. **Scheme:** Internet-facing
+6. **IP address type:** IPv4
+
+**Network mapping:**
+- **VPC:** Default VPC
+- **Mappings:** Select at least 2 availability zones
+
+**Security groups:**
+1. Create new security group or use existing
+2. Allow ports 80 (HTTP) and 443 (HTTPS)
+
+**Listeners:**
+- **Protocol:** HTTP
+- **Port:** 80
+- **Default action:** Forward to `filemanager-tg`
+
+### Step 3: Configure DNS (Optional)
+If you have a domain:
+1. Go to **Route 53**
+2. Create **A record** pointing to ALB DNS name
 
 ---
 
-Your file management application is now successfully deployed on AWS! You can access it via your EC2 instance's public IP address or your custom domain if configured.
+## Part 7: Security Hardening
 
-For support or questions, refer to the troubleshooting section or check the AWS documentation.
+### Step 1: Update S3 Bucket Policy
+1. Go to your S3 bucket
+2. **Permissions** → **Bucket policy**
+3. Add this policy (replace YOUR-BUCKET-NAME):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadForPublicFolder",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::YOUR-BUCKET-NAME/public/*"
+    }
+  ]
+}
+```
+
+### Step 2: Remove Direct EC2 Access
+1. Go to **EC2 Console** → **Security Groups**
+2. Find `filemanager-ec2-sg`
+3. **Edit inbound rules**
+4. Remove the rule for port 5000 (force traffic through load balancer)
+
+---
+
+## Part 8: Monitoring and Maintenance
+
+### Step 1: Set Up CloudWatch Alarms
+1. Go to **CloudWatch Console**
+2. **Alarms** → **Create alarm**
+3. Select metric: EC2 → By Instance → Your instance → CPUUtilization
+4. Set threshold: > 80%
+5. Configure notifications
+
+### Step 2: Enable RDS Monitoring
+1. Go to **RDS Console**
+2. Select your database
+3. **Modify**
+4. Enable **Performance Insights**
+5. Set monitoring interval to 60 seconds
+
+### Step 3: Regular Maintenance
+Create a maintenance checklist:
+- [ ] Update EC2 instance weekly: `sudo yum update -y`
+- [ ] Monitor application logs: `pm2 logs`
+- [ ] Check disk space: `df -h`
+- [ ] Review CloudWatch metrics
+- [ ] Test backups monthly
+
+---
+
+## Troubleshooting Common Issues
+
+### Issue: Can't connect to database
+**Solution:**
+1. Check RDS security group allows port 5432
+2. Verify database endpoint in .env file
+3. Test connection: `psql -h YOUR-RDS-ENDPOINT -U filemanager -d filemanager`
+
+### Issue: S3 uploads failing
+**Solution:**
+1. Check IAM role has S3 permissions
+2. Verify bucket CORS configuration
+3. Check bucket policy allows uploads
+
+### Issue: Application won't start
+**Solution:**
+1. Check PM2 logs: `pm2 logs filemanager`
+2. Verify all environment variables are set
+3. Check Node.js version: `node --version`
+
+### Issue: Can't access application
+**Solution:**
+1. Check security group allows port 5000
+2. Verify instance is running: `pm2 status`
+3. Check application logs for errors
+
+This completes your AWS deployment! Your file management application should now be running securely on AWS infrastructure.
