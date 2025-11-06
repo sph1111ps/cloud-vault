@@ -1,10 +1,39 @@
 import express, { type Request, Response, NextFunction } from "express";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+app.set('trust proxy', 1); // Trust first proxy (ALB) for rate limiting
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Rate limiting to prevent brute force attacks
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 login requests per windowMs
+  message: { error: "Too many login attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Don't count successful logins
+  validate: false, // Disable validation - we know ALB setup is correct
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: { error: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: false, // Disable validation - we know ALB setup is correct
+});
+
+// Apply rate limiting to auth endpoints (stricter for login)
+app.use("/api/auth/login", loginLimiter);
+app.use("/api/auth/register", loginLimiter);
+
+// Apply general rate limiting to all API endpoints
+app.use("/api", apiLimiter);
 
 app.use((req, res, next) => {
   const start = Date.now();

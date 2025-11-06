@@ -3,7 +3,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+import { AWSStorageService as ObjectStorageService, ObjectNotFoundError } from "./aws-storage";
 import { insertFileSchema, insertFolderSchema, loginSchema, registerSchema, changePasswordSchema } from "@shared/schema";
 import { AuthService, requireAuth, requireAdmin, requireUser } from "./auth";
 import { pool } from "./db";
@@ -165,8 +165,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/files/upload-url", requireUser, validateFileUpload, async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      res.json({ uploadURL });
+      const uploadData = await objectStorageService.getObjectEntityUploadURL();
+      res.json(uploadData);
     } catch (error) {
       console.error("Error getting upload URL:", error);
       res.status(500).json({ error: "Failed to get upload URL" });

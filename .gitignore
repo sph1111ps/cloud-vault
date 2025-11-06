@@ -4,3 +4,34 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Environment files (sensitive data)
+.env
+.env.local
+.env.production
+
+# Terraform sensitive files
+terraform/terraform.tfvars
+terraform/teraform.tfvars
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
+
+# SSH keys
+*.pem
+*.key
+*-raw.txt
+
+# Local directories
+.config/
+.local/
+app/
+
+# Deployment artifacts
+deployment-outputs.txt
+*.tar.gz
+
+# Root terraform state (use terraform/ directory instead)
+terraform.tfstate
+terraform.tfstate.backup

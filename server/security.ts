@@ -55,6 +55,7 @@ const ALLOWED_MIME_TYPES = new Set([
   'text/css',
   'text/javascript',
   'application/javascript',
+  'text/markdown',
   
   // 3D Models
   'application/octet-stream', // For .fbx, .obj, .dae and other 3D formats
@@ -80,7 +81,7 @@ const ALLOWED_EXTENSIONS = new Set([
   '.mp4', '.mpeg', '.mov', '.avi', '.webm', '.ogv',
   
   // Code/Text
-  '.json', '.xml', '.html', '.css', '.js',
+  '.json', '.xml', '.html', '.css', '.js', '.md',
   
   // 3D Models
   '.fbx', '.obj', '.dae', '.3ds', '.ply', '.stl', '.x3d', '.gltf', '.glb', '.blend'

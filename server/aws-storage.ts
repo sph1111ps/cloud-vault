@@ -11,6 +11,13 @@ const s3 = new AWS.S3({
 
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'your-app-bucket';
 
+export class ObjectNotFoundError extends Error {
+  constructor() {
+    super("Object not found");
+    this.name = "ObjectNotFoundError";
+  }
+}
+
 export class AWSStorageService {
   /**
    * Generate a signed URL for uploading files to S3
@@ -215,6 +222,116 @@ export class AWSStorageService {
     };
     
     return s3.createPresignedPost(params);
+  }
+
+  /**
+   * Get public object search paths from environment
+   */
+  getPublicObjectSearchPaths(): Array<string> {
+    const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
+    const paths = Array.from(
+      new Set(
+        pathsStr
+          .split(",")
+          .map((path) => path.trim())
+          .filter((path) => path.length > 0)
+      )
+    );
+    return paths;
+  }
+
+  /**
+   * Get private object directory from environment
+   */
+  getPrivateObjectDir(): string {
+    return process.env.PRIVATE_OBJECT_DIR || "private";
+  }
+
+  /**
+   * Search for a public object in S3
+   */
+  async searchPublicObject(filePath: string): Promise<{ key: string } | null> {
+    const searchPaths = this.getPublicObjectSearchPaths();
+    
+    // If no search paths, try the file path directly
+    if (searchPaths.length === 0) {
+      const exists = await this.objectExists(filePath);
+      if (exists) {
+        return { key: filePath };
+      }
+      return null;
+    }
+    
+    // Search in each public path
+    for (const searchPath of searchPaths) {
+      const fullPath = `${searchPath}${filePath.startsWith('/') ? '' : '/'}${filePath}`;
+      const exists = await this.objectExists(fullPath);
+      if (exists) {
+        return { key: fullPath };
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Download an object (wrapper around streamObject for compatibility)
+   */
+  async downloadObject(file: { key: string }, res: Response, cacheTtlSec: number = 3600): Promise<void> {
+    await this.streamObject(file.key, res);
+  }
+
+  /**
+   * Get object entity file from object path
+   */
+  async getObjectEntityFile(objectPath: string): Promise<{ key: string }> {
+    if (!objectPath.startsWith("/objects/")) {
+      throw new ObjectNotFoundError();
+    }
+
+    const parts = objectPath.slice(1).split("/");
+    if (parts.length < 2) {
+      throw new ObjectNotFoundError();
+    }
+
+    const entityId = parts.slice(1).join("/");
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith("/")) {
+      entityDir = `${entityDir}/`;
+    }
+    const key = `${entityDir}${entityId}`;
+    
+    const exists = await this.objectExists(key);
+    if (!exists) {
+      throw new ObjectNotFoundError();
+    }
+    
+    return { key };
+  }
+
+  /**
+   * Normalize object entity path
+   */
+  normalizeObjectEntityPath(rawPath: string): string {
+    // If it's an S3 URL, extract the key
+    if (rawPath.startsWith('https://')) {
+      const url = new URL(rawPath);
+      const key = url.pathname.substring(1); // Remove leading slash
+      
+      let objectEntityDir = this.getPrivateObjectDir();
+      if (!objectEntityDir.endsWith("/")) {
+        objectEntityDir = `${objectEntityDir}/`;
+      }
+      
+      if (key.startsWith(objectEntityDir)) {
+        const entityId = key.slice(objectEntityDir.length);
+        return `/objects/${entityId}`;
+      }
+      
+      return `/objects/${key}`;
+    }
+    
+    return rawPath;
   }
 }
 

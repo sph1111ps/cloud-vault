@@ -1,0 +1,27 @@
+# Terraform Variables - Example Configuration
+# Copy this file to terraform.tfvars and update with your actual values
+# NEVER commit terraform.tfvars to git (it contains sensitive data)
+
+# Required: Database password (minimum 8 characters)
+db_password = "YourSecurePassword123!"
+
+# Optional: Override defaults
+# region      = "us-east-1"
+# bucket_name = "my-custom-bucket-name"  # Leave commented for auto-generated name
+# instance_type = "t3.small"  # Use larger instance if needed
+
+# Optional: Database configuration
+# db_username = "filemanager"
+# db_allocated_storage = 20
+
+# Optional: Custom VPC/Network configuration
+# vpc_cidr = "10.0.0.0/16"
+# public_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+# availability_zones = ["us-east-1a", "us-east-1b"]
+
+# Optional: SSH key pair name
+# key_pair_name = "filemanager-key"
+
+
+
+
